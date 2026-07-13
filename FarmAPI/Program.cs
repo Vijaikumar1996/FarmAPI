@@ -14,22 +14,19 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-
 builder.Services.AddEndpointsApiExplorer();
-
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddDbContext<FarmDbContext>(options =>
 {
     options.UseNpgsql(
-        builder.Configuration.GetConnectionString(
-            "DefaultConnection"));
+        builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
 builder.Services.AddHttpContextAccessor();
 
-builder.Services.AddScoped<IJwtService,JwtService>();
-builder.Services.AddScoped<IAuthService,AuthService>();
+builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IAreaService, AreaService>();
 builder.Services.AddScoped<IDeliveryLocationService, DeliveryLocationService>();
@@ -41,25 +38,37 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ICustomerRequestService, CustomerRequestService>();
 builder.Services.AddScoped<IDeliveryPlanningService, DeliveryPlanningService>();
 
+// --------------------
+// CORS
+// --------------------
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
-    .Get<string[]>();
+    .Get<string[]>() ?? Array.Empty<string>();
+
+Console.WriteLine("===== Allowed Origins =====");
+
+foreach (var origin in allowedOrigins)
+{
+    Console.WriteLine(origin);
+}
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", policy =>
     {
         policy
-            .WithOrigins(allowedOrigins!)
+            .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
     });
 });
 
+// --------------------
+// JWT Authentication
+// --------------------
 builder.Services
-    .AddAuthentication(
-        JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters =
@@ -70,11 +79,8 @@ builder.Services
                 ValidateLifetime = true,
                 ValidateIssuerSigningKey = true,
 
-                ValidIssuer =
-                    builder.Configuration["Jwt:Issuer"],
-
-                ValidAudience =
-                    builder.Configuration["Jwt:Audience"],
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                ValidAudience = builder.Configuration["Jwt:Audience"],
 
                 IssuerSigningKey =
                     new SymmetricSecurityKey(
@@ -84,19 +90,6 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy(
-        "AllowAll",
-        policy =>
-        {
-            policy
-                .AllowAnyOrigin()
-                .AllowAnyHeader()
-                .AllowAnyMethod();
-        });
-});
 
 var app = builder.Build();
 
@@ -108,8 +101,6 @@ app.UseSwaggerUI();
 app.UseHttpsRedirection();
 
 app.UseCors("AllowReactApp");
-
-app.UseCors("AllowAll");
 
 app.UseAuthentication();
 
