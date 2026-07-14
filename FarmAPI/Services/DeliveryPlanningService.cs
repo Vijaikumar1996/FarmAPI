@@ -374,11 +374,11 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
             PlannedQty = quantity,
 
-            DeliveredQty = quantity,
+            DeliveredQty = 0,
 
             UnitPrice = unitPrice,
 
-            Status = CustomerDeliveryStatus.Delivered,
+            Status = CustomerDeliveryStatus.Pending,
 
             GeneratedAt = DateTime.UtcNow,
 

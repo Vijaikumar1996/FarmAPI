@@ -27,8 +27,10 @@
 
         public static class CustomerDeliveryStatus
         {
+            public const string Pending = "PENDING";
             public const string Delivered = "DELIVERED";
-            public const string Undelivered = "UNDELIVERED";
+            public const string PartialDelivered = "PARTIAL_DELIVERED";
+            public const string NotDelivered = "NOT_DELIVERED";
         }
 
         public static class ProductCategory

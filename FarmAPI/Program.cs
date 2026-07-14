@@ -1,5 +1,6 @@
 using Farm.API.Interfaces;
 using Farm.API.Services;
+using Farm.API.Services.Interfaces;
 using FarmAPI.Data;
 using FarmAPI.Interface;
 using FarmAPI.Middleware;
@@ -37,6 +38,7 @@ builder.Services.AddScoped<ICustomerSubscriptionService, CustomerSubscriptionSer
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ICustomerRequestService, CustomerRequestService>();
 builder.Services.AddScoped<IDeliveryPlanningService, DeliveryPlanningService>();
+builder.Services.AddScoped<IDeliveryVerificationService, DeliveryVerificationService>();
 
 // --------------------
 // CORS
