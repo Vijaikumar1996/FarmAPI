@@ -39,6 +39,16 @@ namespace FarmAPI.Data
 
         public DbSet<DeliveryDetail> DeliveryDetails { get; set; }
 
+        public DbSet<CustomerMonthlyLedger> CustomerMonthlyLedgers { get; set; }
+
+        public DbSet<Payment> Payments { get; set; }
+
+        public DbSet<BillingAdjustment> BillingAdjustments { get; set; }
+
+        public DbSet<DeliveryChargeMaster> DeliveryChargeMasters { get; set; }
+
+        public DbSet<CustomerOutstanding> CustomerOutstanding { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

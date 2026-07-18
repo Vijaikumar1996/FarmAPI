@@ -89,5 +89,16 @@ namespace FarmAPI.Entities
         = new List<CustomerSubscription>();
 
         public virtual ICollection<DeliveryDetail> DeliveryDetails { get; set; } = new List<DeliveryDetail>();
+
+        public virtual ICollection<CustomerMonthlyLedger> CustomerMonthlyLedgers { get; set; }
+    = new List<CustomerMonthlyLedger>();
+
+        public virtual ICollection<Payment> Payments { get; set; }
+            = new List<Payment>();
+
+        public virtual ICollection<BillingAdjustment> BillingAdjustments { get; set; }
+            = new List<BillingAdjustment>();
+
+        public virtual CustomerOutstanding? CustomerOutstanding { get; set; }
     }
 }

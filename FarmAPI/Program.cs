@@ -39,6 +39,7 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ICustomerRequestService, CustomerRequestService>();
 builder.Services.AddScoped<IDeliveryPlanningService, DeliveryPlanningService>();
 builder.Services.AddScoped<IDeliveryVerificationService, DeliveryVerificationService>();
+builder.Services.AddScoped<IBillingService, BillingService>();
 
 // --------------------
 // CORS

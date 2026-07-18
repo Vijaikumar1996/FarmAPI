@@ -2,6 +2,8 @@
 using Farm.API.Services.Interfaces;
 using FarmAPI.Data;
 using FarmAPI.DTOs;
+using FarmAPI.Entities;
+using FarmAPI.Interface;
 using FarmAPI.Utils;
 using FarmManagement.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -12,10 +14,12 @@ namespace Farm.API.Services
     public class DeliveryVerificationService : IDeliveryVerificationService
     {
         private readonly FarmDbContext _context;
+        private readonly ICurrentUserService _currentUser;
 
-        public DeliveryVerificationService(FarmDbContext context)
+        public DeliveryVerificationService(FarmDbContext context, ICurrentUserService currentUser)
         {
             _context = context;
+            _currentUser = currentUser;
         }
 
         public async Task<PagedResponse<DeliveryVerificationListDto>> SearchAsync(
@@ -94,24 +98,99 @@ namespace Farm.API.Services
         }
 
         public async Task MarkAllDeliveredAsync(
-            MarkAllDeliveredRequestDto request)
+     MarkAllDeliveredRequestDto request)
         {
-            var deliveryDetails = await _context.DeliveryDetails
-                .Where(x =>
-                    x.DeliveryDate == request.DeliveryDate &&
-                    x.Status == CustomerDeliveryStatus.Pending)
-                .ToListAsync();
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync();
 
-            if (!deliveryDetails.Any())
-                return;
-
-            foreach (var item in deliveryDetails)
+            try
             {
-                item.DeliveredQty = item.PlannedQty;
-                item.Status = CustomerDeliveryStatus.Delivered;
-            }
+                var billingMonth = GetBillingMonth(request.DeliveryDate);
 
-            await _context.SaveChangesAsync();
+                var deliveryDetails = await _context.DeliveryDetails
+                    .Where(x =>
+                        x.DeliveryDate == request.DeliveryDate &&
+                        x.Status == CustomerDeliveryStatus.Pending)
+                    .ToListAsync();
+
+                if (!deliveryDetails.Any())
+                    return;
+
+                var customerIds = deliveryDetails
+                    .Select(x => x.CustomerId)
+                    .Distinct()
+                    .ToList();
+
+                var ledgerDictionary = await _context.CustomerMonthlyLedgers
+                    .Where(x =>
+                        x.BillingMonth == billingMonth &&
+                        customerIds.Contains(x.CustomerId))
+                    .ToDictionaryAsync(x => x.CustomerId);
+
+                var outstandingDictionary = await _context.CustomerOutstanding
+                    .Where(x => customerIds.Contains(x.CustomerId))
+                    .ToDictionaryAsync(x => x.CustomerId);
+
+                var currentDeliveryCharge =
+                    await GetDeliveryChargeAsync();
+
+                var subscriptionCustomers = (
+                    await _context.CustomerSubscriptions
+                        .Where(x =>
+                            customerIds.Contains(x.CustomerId) &&
+                            x.IsActive)
+                        .Select(x => x.CustomerId)
+                        .Distinct()
+                        .ToListAsync())
+                    .ToHashSet();
+
+                foreach (var item in deliveryDetails)
+                {
+                    item.DeliveredQty = item.PlannedQty;
+
+                    item.Status = CustomerDeliveryStatus.Delivered;
+
+                    var amount = item.DeliveredQty * item.UnitPrice;
+
+                    UpdateMonthlyLedger(
+                        ledgerDictionary,
+                        item,
+                        amount);
+
+                    UpdateCustomerOutstanding(
+                        outstandingDictionary,
+                        item,
+                        amount);
+                }
+
+                foreach (var customerId in customerIds)
+                {
+                    if (subscriptionCustomers.Contains(customerId))
+                        continue;
+
+                    if (!ledgerDictionary.TryGetValue(customerId, out var ledger))
+                        continue;
+
+                    if (!outstandingDictionary.TryGetValue(customerId, out var outstanding))
+                        continue;
+
+                    UpdateDeliveryCharge(
+                        ledger,
+                        outstanding,
+                        false,
+                        true,
+                        currentDeliveryCharge);
+                }
+
+                await _context.SaveChangesAsync();
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         public async Task<DeliveryVerificationDto> GetAsync(
@@ -178,6 +257,8 @@ namespace Farm.API.Services
 
             try
             {
+                var billingMonth = GetBillingMonth(request.DeliveryDate);
+
                 var deliveryDetails = await _context.DeliveryDetails
                     .Where(x =>
                         x.CustomerId == request.CustomerId &&
@@ -189,11 +270,12 @@ namespace Farm.API.Services
                     throw new Exception("Delivery details not found.");
                 }
 
+                // Duplicate Product Validation
                 var duplicateProducts = request.Items
-    .GroupBy(x => x.ProductId)
-    .Where(g => g.Count() > 1)
-    .Select(g => g.Key)
-    .ToList();
+                    .GroupBy(x => x.ProductId)
+                    .Where(x => x.Count() > 1)
+                    .Select(x => x.Key)
+                    .ToList();
 
                 if (duplicateProducts.Any())
                 {
@@ -203,38 +285,57 @@ namespace Farm.API.Services
                         .ToListAsync();
 
                     throw new Exception(
-                        $"Duplicate products found: {string.Join(", ", productNames)}");
+                        $"Duplicate products found : {string.Join(", ", productNames)}");
                 }
 
-                // Load only newly added products
+                // Load prices only for newly added products
                 var productIds = request.Items
-    .Where(x =>
-        !x.DeliveryDetailId.HasValue &&
-        x.DeliveredQty > 0)
-    .Select(x => x.ProductId)
-    .Distinct()
-    .ToList();
+                    .Where(x =>
+                        !x.DeliveryDetailId.HasValue &&
+                        x.DeliveredQty > 0)
+                    .Select(x => x.ProductId)
+                    .Distinct()
+                    .ToList();
 
                 var productPrices = await _context.ProductPrices
                     .Where(x =>
                         productIds.Contains(x.ProductId) &&
                         x.EffectiveFrom <= request.DeliveryDate)
                     .GroupBy(x => x.ProductId)
-                    .Select(g => g
-                        .OrderByDescending(x => x.EffectiveFrom)
+                    .Select(x => x
+                        .OrderByDescending(y => y.EffectiveFrom)
                         .First())
                     .ToDictionaryAsync(x => x.ProductId);
 
+                // Billing dictionaries
+                var ledger = await GetOrCreateMonthlyLedgerAsync(
+                    request.CustomerId,
+                    billingMonth);
+
+                var outstanding = await GetOrCreateCustomerOutstandingAsync(
+                    request.CustomerId);
+
+                var currentDeliveryCharge = await GetDeliveryChargeAsync();
+
+                var isSubscriptionCustomer =
+                    await IsSubscriptionCustomerAsync(
+                        request.CustomerId);
+
+                var oldDeliveryChargeApplicable =
+    !isSubscriptionCustomer &&
+    deliveryDetails.Any(x =>
+        x.Status == CustomerDeliveryStatus.Delivered ||
+        x.Status == CustomerDeliveryStatus.PartialDelivered);
+
                 foreach (var item in request.Items)
                 {
-                    // Ignore newly added product with zero quantity
+                    // Ignore newly added product with zero qty
                     if (!item.DeliveryDetailId.HasValue &&
                         item.DeliveredQty <= 0)
                     {
                         continue;
                     }
 
-                    // Existing Delivery Detail
                     if (item.DeliveryDetailId.HasValue)
                     {
                         var deliveryDetail = deliveryDetails
@@ -247,27 +348,24 @@ namespace Farm.API.Services
                                 $"Delivery detail {item.DeliveryDetailId} not found.");
                         }
 
+                        // Billing Update (uses OLD values)
+                        UpdateBilling(
+     ledger,
+     outstanding,
+     deliveryDetail,
+     item.DeliveredQty);
+
+                        // Update Delivery Detail
                         deliveryDetail.DeliveredQty = item.DeliveredQty;
+
                         deliveryDetail.Remarks = request.Remarks;
 
-                        deliveryDetail.Status = GetDeliveryStatus(deliveryDetail.PlannedQty,item.DeliveredQty);
+                        deliveryDetail.Status = GetDeliveryStatus(
+                            deliveryDetail.PlannedQty,
+                            item.DeliveredQty);
                     }
                     else
                     {
-                        // Check whether the product already exists for this customer & delivery date
-                        var existingDeliveryDetail = deliveryDetails
-                            .FirstOrDefault(x => x.ProductId == item.ProductId);
-
-                        if (existingDeliveryDetail != null)
-                        {
-                            existingDeliveryDetail.DeliveredQty = item.DeliveredQty;
-                            existingDeliveryDetail.Remarks = request.Remarks;
-
-                            existingDeliveryDetail.Status = GetDeliveryStatus(existingDeliveryDetail.PlannedQty,item.DeliveredQty);
-
-                            continue;
-                        }
-
                         if (!productPrices.TryGetValue(
                             item.ProductId,
                             out var productPrice))
@@ -276,29 +374,60 @@ namespace Farm.API.Services
                                 $"Price not configured for Product {item.ProductId}.");
                         }
 
-                        _context.DeliveryDetails.Add(
-                            new DeliveryDetail
-                            {
-                                CustomerId = request.CustomerId,
+                        var newDelivery = new DeliveryDetail
+                        {
+                            CustomerId = request.CustomerId,
 
-                                DeliveryDate = request.DeliveryDate,
+                            DeliveryDate = request.DeliveryDate,
 
-                                ProductId = item.ProductId,
+                            BillingMonth = GetBillingMonth(request.DeliveryDate),
 
-                                PlannedQty = 0,
+                            ProductId = item.ProductId,
 
-                                DeliveredQty = item.DeliveredQty,
+                            PlannedQty = 0,
 
-                                UnitPrice = productPrice.SellingPrice,
+                            DeliveredQty = 0,
 
-                                Remarks = request.Remarks,
+                            UnitPrice = productPrice.SellingPrice,
 
-                                Status = CustomerDeliveryStatus.Delivered,
+                            Remarks = request.Remarks,
 
-                                GeneratedAt = DateTime.UtcNow
-                            });
+                            Status = CustomerDeliveryStatus.Pending,
+
+                            GeneratedAt = DateTime.UtcNow,
+
+                            GeneratedBy = _currentUser.UserId
+                        };
+
+                        // Billing Update
+                        UpdateBilling(
+    ledger,
+    outstanding,
+    newDelivery,
+    item.DeliveredQty);
+
+                        newDelivery.DeliveredQty = item.DeliveredQty;
+                        newDelivery.Status = CustomerDeliveryStatus.Delivered;
+
+                        _context.DeliveryDetails.Add(newDelivery);
                     }
                 }
+
+                var newDeliveryChargeApplicable =
+    !isSubscriptionCustomer &&
+    (
+        deliveryDetails.Any(x => x.DeliveredQty > 0) ||
+        request.Items.Any(x =>
+            !x.DeliveryDetailId.HasValue &&
+            x.DeliveredQty > 0)
+    );
+
+                UpdateDeliveryCharge(
+    ledger,
+    outstanding,
+    oldDeliveryChargeApplicable,
+    newDeliveryChargeApplicable,
+    currentDeliveryCharge);
 
                 await _context.SaveChangesAsync();
 
@@ -323,5 +452,273 @@ namespace Farm.API.Services
 
             return CustomerDeliveryStatus.Delivered;
         }
+
+        private void UpdateMonthlyLedger(
+     Dictionary<long, CustomerMonthlyLedger> ledgerDictionary,
+     DeliveryDetail detail,
+     decimal amount)
+        {
+            if (!ledgerDictionary.TryGetValue(detail.CustomerId, out var ledger))
+            {
+                ledger = new CustomerMonthlyLedger
+                {
+                    CustomerId = detail.CustomerId,
+
+                    BillingMonth = detail.BillingMonth,
+
+                    ProductAmount = 0,
+
+                    DeliveryCharge = 0,
+
+                    AdjustmentAmount = 0,
+
+                    PaidAmount = 0,
+
+                    BalanceAmount = 0,
+
+                    CreatedAt = DateTime.UtcNow,
+
+                    CreatedBy = _currentUser.UserId
+                };
+
+                ledgerDictionary.Add(detail.CustomerId, ledger);
+
+                _context.CustomerMonthlyLedgers.Add(ledger);
+            }
+
+            ledger.ProductAmount += amount;
+
+            ledger.BalanceAmount += amount;
+
+            ledger.UpdatedAt = DateTime.UtcNow;
+
+            ledger.UpdatedBy = _currentUser.UserId;
+        }
+
+        private void UpdateCustomerOutstanding(
+     Dictionary<long, CustomerOutstanding> outstandingDictionary,
+     DeliveryDetail detail,
+     decimal amount)
+        {
+            if (!outstandingDictionary.TryGetValue(detail.CustomerId, out var outstanding))
+            {
+                outstanding = new CustomerOutstanding
+                {
+                    CustomerId = detail.CustomerId,
+
+                    OutstandingAmount = 0,
+
+                    CreatedAt = DateTime.UtcNow,
+
+                    CreatedBy = _currentUser.UserId
+                };
+
+                outstandingDictionary.Add(detail.CustomerId, outstanding);
+
+                _context.CustomerOutstanding.Add(outstanding);
+            }
+
+            outstanding.OutstandingAmount += amount;
+
+            outstanding.UpdatedAt = DateTime.UtcNow;
+
+            outstanding.UpdatedBy = _currentUser.UserId;
+        }
+
+        private async Task<decimal> GetDeliveryChargeAsync()
+        {
+            return await _context.DeliveryChargeMasters
+
+                .Where(x => x.IsActive)
+
+                .OrderByDescending(x => x.EffectiveFrom)
+
+                .Select(x => x.DeliveryCharge)
+
+                .FirstOrDefaultAsync();
+        }
+
+
+        private void UpdateBilling(
+    CustomerMonthlyLedger ledger,
+    CustomerOutstanding outstanding,
+    DeliveryDetail deliveryDetail,
+    decimal newDeliveredQty)
+        {
+            var differenceAmount = GetBillingDifference(
+                deliveryDetail,
+                newDeliveredQty);
+
+            if (differenceAmount != 0)
+            {
+                ledger.ProductAmount += differenceAmount;
+
+                ledger.BalanceAmount += differenceAmount;
+
+                outstanding.OutstandingAmount += differenceAmount;
+            }
+
+            ledger.UpdatedAt = DateTime.UtcNow;
+            ledger.UpdatedBy = _currentUser.UserId;
+
+            outstanding.UpdatedAt = DateTime.UtcNow;
+            outstanding.UpdatedBy = _currentUser.UserId;
+        }
+
+        private decimal GetBillingDifference(
+    DeliveryDetail deliveryDetail,
+    decimal newDeliveredQty)
+        {
+            var newAmount = CalculateAmount(
+    newDeliveredQty,
+    deliveryDetail.UnitPrice);
+
+            if (deliveryDetail.Status == CustomerDeliveryStatus.Pending ||
+                deliveryDetail.Status == CustomerDeliveryStatus.NotDelivered)
+            {
+                return newAmount;
+            }
+
+            var oldAmount =
+                deliveryDetail.DeliveredQty *
+                deliveryDetail.UnitPrice;
+
+            return newAmount - oldAmount;
+        }
+
+        private decimal GetDeliveryChargeAmount(
+    string status,
+    decimal deliveryCharge)
+        {
+            if (status == CustomerDeliveryStatus.Delivered ||
+                status == CustomerDeliveryStatus.PartialDelivered)
+            {
+                return deliveryCharge;
+            }
+
+            return 0;
+        }
+
+        private async Task<CustomerMonthlyLedger> GetOrCreateMonthlyLedgerAsync(
+    long customerId,
+    DateOnly billingMonth)
+        {
+            var ledger = await _context.CustomerMonthlyLedgers
+                .FirstOrDefaultAsync(x =>
+                    x.CustomerId == customerId &&
+                    x.BillingMonth == billingMonth);
+
+            if (ledger != null)
+                return ledger;
+
+            ledger = new CustomerMonthlyLedger
+            {
+                CustomerId = customerId,
+
+                BillingMonth = billingMonth,
+
+                ProductAmount = 0,
+
+                DeliveryCharge = 0,
+
+                AdjustmentAmount = 0,
+
+                PaidAmount = 0,
+
+                BalanceAmount = 0,
+
+                CreatedAt = DateTime.UtcNow,
+
+                CreatedBy = _currentUser.UserId
+            };
+
+            _context.CustomerMonthlyLedgers.Add(ledger);
+
+            return ledger;
+        }
+
+        private async Task<CustomerOutstanding> GetOrCreateCustomerOutstandingAsync(
+    long customerId)
+        {
+            var outstanding = await _context.CustomerOutstanding
+                .FirstOrDefaultAsync(x =>
+                    x.CustomerId == customerId);
+
+            if (outstanding != null)
+                return outstanding;
+
+            outstanding = new CustomerOutstanding
+            {
+                CustomerId = customerId,
+
+                OutstandingAmount = 0,
+
+                CreatedAt = DateTime.UtcNow,
+
+                CreatedBy = _currentUser.UserId
+            };
+
+            _context.CustomerOutstanding.Add(outstanding);
+
+            return outstanding;
+        }
+
+        private static DateOnly GetBillingMonth(
+    DateOnly deliveryDate)
+        {
+            return new DateOnly(
+                deliveryDate.Year,
+                deliveryDate.Month,
+                1);
+        }
+
+        private static decimal CalculateAmount(
+    decimal qty,
+    decimal unitPrice)
+        {
+            return qty * unitPrice;
+        }
+
+        private async Task<bool> IsSubscriptionCustomerAsync(
+    long customerId)
+        {
+            return await _context.CustomerSubscriptions
+                .AnyAsync(x =>
+                    x.CustomerId == customerId &&
+                    x.IsActive);
+        }
+
+        private void UpdateDeliveryCharge(
+    CustomerMonthlyLedger ledger,
+    CustomerOutstanding outstanding,
+    bool oldApplicable,
+    bool newApplicable,
+    decimal deliveryCharge)
+        {
+            decimal oldCharge =
+                oldApplicable ? deliveryCharge : 0;
+
+            decimal newCharge =
+                newApplicable ? deliveryCharge : 0;
+
+            var difference =
+                newCharge - oldCharge;
+
+            if (difference == 0)
+                return;
+
+            ledger.DeliveryCharge += difference;
+
+            ledger.BalanceAmount += difference;
+
+            outstanding.OutstandingAmount += difference;
+
+            ledger.UpdatedAt = DateTime.UtcNow;
+            ledger.UpdatedBy = _currentUser.UserId;
+
+            outstanding.UpdatedAt = DateTime.UtcNow;
+            outstanding.UpdatedBy = _currentUser.UserId;
+        }
+
     }
 }

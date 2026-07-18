@@ -364,6 +364,11 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         {
             DeliveryDate = deliveryDate,
 
+            BillingMonth = new DateOnly(
+            deliveryDate.Year,
+            deliveryDate.Month,
+            1),
+
             CustomerId = customerId,
 
             SubscriptionId = subscriptionId,

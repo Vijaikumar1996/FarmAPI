@@ -55,6 +55,10 @@ public class DeliveryDetail
     [Column("generated_by")]
     public long? GeneratedBy { get; set; }
 
+    [Required]
+    [Column("billing_month")]
+    public DateOnly BillingMonth { get; set; }
+
     #region Navigation Properties
 
     [ForeignKey(nameof(CustomerId))]
