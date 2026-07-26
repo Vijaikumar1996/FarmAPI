@@ -3,6 +3,7 @@ using FarmAPI.Entities;
 using FarmAPI.Interface;
 using Microsoft.EntityFrameworkCore;
 using static FarmAPI.DTOs.BillingDto;
+using static FarmAPI.Utils.Constant;
 
 namespace FarmAPI.Services
 {
@@ -11,21 +12,28 @@ namespace FarmAPI.Services
         private readonly FarmDbContext _context;
         private readonly ICurrentUserService _currentUser;
 
+        private readonly ICustomerHelperService _customerHelper;
+
         public BillingService(
             FarmDbContext context,
-            ICurrentUserService currentUser)
+            ICurrentUserService currentUser,
+            ICustomerHelperService customerHelper)
         {
             _context = context;
             _currentUser = currentUser;
+            _customerHelper = customerHelper;
         }
 
         public async Task<BillingSearchResponse> GetMonthlyBillingAsync(
-     BillingFilterRequest request)
+      BillingFilterRequest request)
         {
             var billingMonth = new DateOnly(
                 request.BillingMonth.Year,
                 request.BillingMonth.Month,
                 1);
+
+            var subscriptionCustomerIds =
+      await _customerHelper.GetSubscriptionCustomerIdsAsync();
 
             var query = _context.CustomerMonthlyLedgers
                 .Where(x => x.BillingMonth == billingMonth);
@@ -36,10 +44,48 @@ namespace FarmAPI.Services
                     x.CustomerId == request.CustomerId.Value);
             }
 
-            if (request.AreaId.HasValue)
+            // Customer Type Filter
+
+            if (!string.IsNullOrWhiteSpace(request.CustomerType))
             {
-                query = query.Where(x =>
-                    x.Customer.AreaId == request.AreaId.Value);
+                switch (request.CustomerType.ToUpper())
+                {
+                    case "SUBSCRIPTION":
+
+                        query = query.Where(x =>
+                            subscriptionCustomerIds.Contains(x.CustomerId));
+
+                        break;
+
+                    case "NON_SUBSCRIPTION":
+
+                        query = query.Where(x =>
+                            !subscriptionCustomerIds.Contains(x.CustomerId));
+
+                        break;
+                }
+            }
+
+            // Payment Status Filter
+
+            if (!string.IsNullOrWhiteSpace(request.PaymentStatus))
+            {
+                switch (request.PaymentStatus.ToUpper())
+                {
+                    case "PAID":
+
+                        query = query.Where(x =>
+                            x.BalanceAmount <= 0);
+
+                        break;
+
+                    case "PENDING":
+
+                        query = query.Where(x =>
+                            x.BalanceAmount > 0);
+
+                        break;
+                }
             }
 
             var billingList = await query
@@ -100,44 +146,6 @@ namespace FarmAPI.Services
             };
         }
 
-    //    public async Task<BillingSummaryResponse> GetSummaryAsync(
-    //DateOnly billingMonth)
-    //    {
-    //        billingMonth = new DateOnly(
-    //            billingMonth.Year,
-    //            billingMonth.Month,
-    //            1);
-
-    //        var summary = await _context.CustomerMonthlyLedgers
-
-    //            .Where(x => x.BillingMonth == billingMonth)
-
-    //            .GroupBy(x => 1)
-
-    //            .Select(x => new BillingSummaryResponse
-    //            {
-    //                TotalBills = x.Count(),
-
-    //                TotalCharges =
-    //                    x.Sum(y =>
-    //                        y.ProductAmount +
-    //                        y.DeliveryCharge +
-    //                        y.AdjustmentAmount),
-
-    //                TotalCollected =
-    //                    x.Sum(y => y.PaidAmount),
-
-    //                TotalOutstanding =
-    //                    x.Sum(y => y.BalanceAmount),
-
-    //                PendingCustomers =
-    //                    x.Count(y => y.BalanceAmount > 0)
-    //            })
-
-    //            .FirstOrDefaultAsync();
-
-    //        return summary ?? new BillingSummaryResponse();
-    //    }
 
         public async Task ReceivePaymentAsync(
     ReceivePaymentRequest request)
@@ -378,7 +386,8 @@ namespace FarmAPI.Services
             var deliveries = await _context.DeliveryDetails
                 .Where(x =>
                     x.CustomerId == customerId &&
-                    x.BillingMonth == billingMonth)
+                    x.BillingMonth == billingMonth && 
+                    x.Status == CustomerDeliveryStatus.Delivered)
                 .OrderBy(x => x.DeliveryDate)
                 .Select(x => new DeliveryDto
                 {
@@ -475,17 +484,144 @@ namespace FarmAPI.Services
             };
         }
 
-        private static string GetPaymentStatus(
-    decimal balance,
-    decimal paidAmount)
+        public async Task<SummaryBillResponse> GetSummaryBillAsync(
+     long customerId,
+     DateOnly billingMonth)
         {
-            if (balance <= 0)
-                return "PAID";
+            billingMonth = new DateOnly(
+                billingMonth.Year,
+                billingMonth.Month,
+                1);
 
-            if (paidAmount > 0)
-                return "PARTIAL";
+            var ledger = await _context.CustomerMonthlyLedgers
 
-            return "PENDING";
+                .Where(x =>
+                    x.CustomerId == customerId &&
+                    x.BillingMonth == billingMonth)
+
+                .Select(x => new
+                {
+                    x,
+
+                    CustomerName = x.Customer.CustomerName,
+
+                    MobileNo = x.Customer.MobileNo,
+
+                    AreaName = x.Customer.Area.AreaName,
+
+                    DeliveryLocation =
+                        x.Customer.DeliveryLocation != null
+                            ? x.Customer.DeliveryLocation.LocationName
+                            : string.Empty
+                })
+
+                .FirstOrDefaultAsync();
+
+            if (ledger == null)
+                throw new Exception("Monthly bill not found.");
+
+            var previousOutstanding = await _context.CustomerMonthlyLedgers
+
+                .Where(x =>
+                    x.CustomerId == customerId &&
+                    x.BillingMonth < billingMonth)
+
+                .SumAsync(x => x.BalanceAmount);
+
+            var products = await _context.DeliveryDetails
+
+                .Where(x =>
+                    x.CustomerId == customerId &&
+                    x.BillingMonth == billingMonth &&
+                    x.DeliveredQty > 0)
+
+                .GroupBy(x => new
+                {
+                    x.ProductId,
+                    x.Product.ProductName,
+                    x.UnitPrice
+                })
+
+                .Select(x => new SummaryBillItemDto
+                {
+                    ProductName = x.Key.ProductName,
+
+                    Quantity = x.Sum(y => y.DeliveredQty),
+
+                    UnitPrice = x.Key.UnitPrice,
+
+                    Amount = x.Sum(y =>
+                        y.DeliveredQty * y.UnitPrice),
+
+                    TotalDays = x.Select(y => y.DeliveryDate)
+                     .Distinct()
+                     .Count()
+                })
+
+                .OrderBy(x => x.ProductName)
+
+                .ToListAsync();
+
+            var currentCharges =
+                ledger.x.ProductAmount +
+                ledger.x.DeliveryCharge +
+                ledger.x.AdjustmentAmount;
+
+            return new SummaryBillResponse
+            {
+                Farm = new FarmInfoDto
+                {
+                    FarmName = "Dhariya Farms",
+
+                    MobileNo = "9876543210",
+
+                    BankName = "ICICI Bank",
+
+                    AccountName = "Dhariya Farms",
+
+                    AccountNumber = "610605032340",
+
+                    IfscCode = "ICIC0001696",
+
+                    UpiId = "7338861649@icici",
+
+                    QrCodeUrl = null
+                },
+
+                Customer = new CustomerBillDto
+                {
+                    CustomerName = ledger.CustomerName,
+
+                    MobileNo = ledger.MobileNo,
+
+                    AreaName = ledger.AreaName,
+
+                    DeliveryLocation = ledger.DeliveryLocation,
+
+                    BillingMonth = ledger.x.BillingMonth
+                },
+
+                Summary = new BillSummaryDto
+                {
+                    ProductAmount = ledger.x.ProductAmount,
+
+                    DeliveryCharge = ledger.x.DeliveryCharge,
+
+                    AdjustmentAmount = ledger.x.AdjustmentAmount,
+
+                    PreviousOutstanding = previousOutstanding,
+
+                    CurrentCharges = currentCharges,
+
+                    PaidAmount = ledger.x.PaidAmount,
+
+                    TotalOutstanding =
+                        previousOutstanding +
+                        ledger.x.BalanceAmount
+                },
+
+                Products = products
+            };
         }
     }
 }

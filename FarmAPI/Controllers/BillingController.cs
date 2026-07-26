@@ -63,5 +63,15 @@ namespace FarmAPI.Controllers
                 customerId,
                 billingMonth));
         }
+
+        [HttpGet("summary-bill")]
+        public async Task<IActionResult> GetSummaryBill(
+    long customerId,
+    DateOnly billingMonth)
+        {
+            return Ok(await _billingService.GetSummaryBillAsync(
+                customerId,
+                billingMonth));
+        }
     }
 }

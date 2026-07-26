@@ -8,7 +8,7 @@
 
             public long? CustomerId { get; set; }
 
-            public long? AreaId { get; set; }
+            public string? CustomerType { get; set; }
 
             public string? PaymentStatus { get; set; }
         }
@@ -165,6 +165,79 @@
             public string Reason { get; set; } = string.Empty;
 
             public string? Remarks { get; set; }
+        }
+
+        public class SummaryBillResponse
+        {
+            public FarmInfoDto Farm { get; set; } = new();
+
+            public CustomerBillDto Customer { get; set; } = new();
+
+            public BillSummaryDto Summary { get; set; } = new();
+
+            public List<SummaryBillItemDto> Products { get; set; } = new();
+        }
+
+        public class FarmInfoDto
+        {
+            public string FarmName { get; set; } = string.Empty;
+
+            public string MobileNo { get; set; } = string.Empty;
+
+            public string BankName { get; set; } = string.Empty;
+
+            public string AccountName { get; set; } = string.Empty;
+
+            public string AccountNumber { get; set; } = string.Empty;
+
+            public string IfscCode { get; set; } = string.Empty;
+
+            public string UpiId { get; set; } = string.Empty;
+
+            public string? QrCodeUrl { get; set; }
+        }
+
+        public class CustomerBillDto
+        {
+            public string CustomerName { get; set; } = string.Empty;
+
+            public string MobileNo { get; set; } = string.Empty;
+
+            public string AreaName { get; set; } = string.Empty;
+
+            public string? DeliveryLocation { get; set; }
+
+            public DateOnly BillingMonth { get; set; }
+        }
+
+        public class BillSummaryDto
+        {
+            public decimal ProductAmount { get; set; }
+
+            public decimal DeliveryCharge { get; set; }
+
+            public decimal AdjustmentAmount { get; set; }
+
+            public decimal PreviousOutstanding { get; set; }
+
+            public decimal CurrentCharges { get; set; }
+
+            public decimal PaidAmount { get; set; }
+
+            public decimal TotalOutstanding { get; set; }
+        }
+
+        public class SummaryBillItemDto
+        {
+            public string ProductName { get; set; } = string.Empty;
+
+            public decimal Quantity { get; set; }
+
+            public decimal UnitPrice { get; set; }
+
+            public decimal Amount { get; set; }
+
+            public int TotalDays { get; set; }
         }
     }
 }

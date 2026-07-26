@@ -15,10 +15,12 @@ namespace FarmAPI.Services;
 public class CustomerRequestService : ICustomerRequestService
 {
     private readonly FarmDbContext _context;
+    private readonly ICustomerHelperService _customerHelper;
 
-    public CustomerRequestService(FarmDbContext context)
+    public CustomerRequestService(FarmDbContext context, ICustomerHelperService customerHelper)
     {
         _context = context;
+        _customerHelper = customerHelper;
     }
 
     public async Task<PagedResponse<CustomerRequestListDto>> GetAllAsync(
@@ -113,7 +115,7 @@ public class CustomerRequestService : ICustomerRequestService
         return MapToDto(entity);
     }
 
-    private static CustomerRequestListDto MapToListDto(
+    private  CustomerRequestListDto MapToListDto(
         CustomerRequest entity)
     {
         return new CustomerRequestListDto
@@ -140,7 +142,7 @@ public class CustomerRequestService : ICustomerRequestService
 
             Status = entity.Status,
 
-            RequestDescription = GetRequestDescription(entity)
+            RequestDescription = _customerHelper.GetCustomerRequestDescription(entity)
         };
     }
 
@@ -174,28 +176,7 @@ public class CustomerRequestService : ICustomerRequestService
             IsActive = entity.IsActive
         };
     }
-
-    private static string GetRequestDescription(
-        CustomerRequest entity)
-    {
-        var productName = entity.Product?.ProductName ?? "All Products";
-
-        return entity.RequestAction.ToUpper() switch
-        {
-            "ADD" =>
-                $"Add - {productName} x {entity.Quantity}",
-
-            "PAUSE" =>
-                $"Pause - {productName}",
-
-            "REPLACE" =>
-                $"Replace - {productName} x {entity.Quantity}",
-
-            _ =>
-                entity.RequestAction
-        };
-    }
-
+   
     public async Task<CustomerRequestLookupDto> GetCustomerRequestLookupAsync(
     long customerId, DateOnly deliveryDate)
     {
@@ -290,7 +271,7 @@ public class CustomerRequestService : ICustomerRequestService
                     Quantity = x.Quantity,
                     EffectiveFrom = x.EffectiveFrom,
                     EffectiveTo = x.EffectiveTo,
-                    RequestDescription = GetRequestDescription(x),
+                    RequestDescription = _customerHelper.GetCustomerRequestDescription(x),
                     Status = x.Status,
                     SubscriptionId = x.SubscriptionId
                 })

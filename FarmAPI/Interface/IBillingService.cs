@@ -19,5 +19,9 @@ namespace FarmAPI.Interface
         Task<BillingDetailsResponse> GetBillingDetailsAsync(
     long customerId,
     DateOnly billingMonth);
+
+        Task<SummaryBillResponse> GetSummaryBillAsync(
+    long customerId,
+    DateOnly billingMonth);
     }
 }
