@@ -7,7 +7,7 @@ namespace FarmAPI.DTOs
         public class CreateAreaRequest
         {
             [Required]
-            [MaxLength(10)]
+            [MaxLength(20)]
             public string AreaCode { get; set; } = string.Empty;
 
             [Required]
@@ -18,7 +18,7 @@ namespace FarmAPI.DTOs
         public class UpdateAreaRequest
         {
             [Required]
-            [MaxLength(10)]
+            [MaxLength(20)]
             public string AreaCode { get; set; } = string.Empty;
 
             [Required]
