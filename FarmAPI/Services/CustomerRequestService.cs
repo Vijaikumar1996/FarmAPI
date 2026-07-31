@@ -72,8 +72,8 @@ public class CustomerRequestService : ICustomerRequestService
         var requests = await query
             .OrderByDescending(x => x.EffectiveFrom)
             .ThenBy(x => x.Customer.CustomerName)
-            .Skip((filter.PageNumber - 1) * filter.PageSize)
-            .Take(filter.PageSize) 
+            //.Skip((filter.PageNumber - 1) * filter.PageSize)
+            //.Take(filter.PageSize) 
             .ToListAsync();
 
         var canEdit =

@@ -58,8 +58,8 @@ namespace Farm.API.Services
 
             var items = await groupedQuery
                 .OrderBy(x => x.Key.CustomerName)
-                .Skip((request.PageNumber - 1) * request.PageSize)
-                .Take(request.PageSize)
+                //.Skip((request.PageNumber - 1) * request.PageSize)
+                //.Take(request.PageSize)
                 .Select(g => new DeliveryVerificationListDto
                 {
                     CustomerId = g.Key.CustomerId,

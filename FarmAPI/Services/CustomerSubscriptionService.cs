@@ -54,8 +54,8 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
         var subscriptions = await query
             .OrderBy(x => x.Customer.CustomerName)
             .ThenBy(x => x.Product.ProductName)
-            .Skip((filter.PageNumber - 1) * filter.PageSize)
-            .Take(filter.PageSize)
+            //.Skip((filter.PageNumber - 1) * filter.PageSize)
+            //.Take(filter.PageSize)
             .ToListAsync();
 
         return new PagedResponse<CustomerSubscriptionListDto>
