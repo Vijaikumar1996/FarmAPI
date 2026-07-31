@@ -56,9 +56,9 @@ namespace FarmAPI.Services
                 .OrderBy(x => x.DisplayOrder)
                 .ThenBy(x => x.ProductName)
 
-                .Skip((request.PageNumber - 1) * request.PageSize)
+                //.Skip((request.PageNumber - 1) * request.PageSize)
 
-                .Take(request.PageSize)
+                //.Take(request.PageSize)
 
                 .Select(x => new ProductResponseDto
                 {
