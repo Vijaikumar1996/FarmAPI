@@ -26,6 +26,13 @@ namespace FarmAPI.Controllers
             return Ok(await _areaService.GetAllAsync());
         }
 
+        [HttpGet("dropdown")]
+        public async Task<IActionResult> GetDropdown()
+        {
+            var result = await _areaService.GetDropdownAsync();
+            return Ok(result);
+        }
+
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(long id)
         {

@@ -1,4 +1,5 @@
-﻿using FarmAPI.Data;
+﻿using DocumentFormat.OpenXml.Vml.Office;
+using FarmAPI.Data;
 using FarmAPI.DTOs;
 using FarmAPI.Entities;
 using FarmAPI.Interface;
@@ -22,40 +23,84 @@ namespace FarmAPI.Services
 
         public async Task<List<CustomerResponse>> GetAllAsync()
         {
-            return await _context.Customers
-                .Include(x => x.Area)
-                .Include(x => x.DeliveryLocation)
-                .OrderBy(x => x.CustomerName)
-                .Select(x => new CustomerResponse
-                {
-                    Id = x.Id,
-                    CustomerCode = x.CustomerCode,
-                    CustomerName = x.CustomerName,
-                    MobileNo = x.MobileNo,
-                    AlternateMobileNo = x.AlternateMobileNo,
-                    Email = x.Email,
+            var customers = await _context.Customers
+     .AsNoTracking()
+     .Include(x => x.Area)
+     .Include(x => x.DeliveryLocation)
+     .OrderBy(x => x.CustomerName)
+     .Select(x => new
+     {
+         x.Id,
+         x.CustomerCode,
+         x.CustomerName,
+         x.MobileNo,
+         x.AlternateMobileNo,
+         x.Email,
 
-                    AreaId = x.AreaId,
-                    AreaCode = x.Area.AreaCode,
-                    AreaName = x.Area.AreaName,
+         x.AreaId,
+         AreaCode = x.Area.AreaCode,
+         AreaName = x.Area.AreaName,
 
-                    DeliveryLocationId = x.DeliveryLocationId,
-                    DeliveryLocationName = x.DeliveryLocation != null
-                        ? x.DeliveryLocation.LocationName
-                        : null,
+         x.DeliveryLocationId,
+         DeliveryLocationName = x.DeliveryLocation.LocationName,
+         DeliveryLocationAddress = x.DeliveryLocation.Address,
+         DoorNoAtEnd = x.DeliveryLocation.DoorNoAtEnd,
 
-                    HouseDoorNo = x.HouseDoorNo,
-                    Landmark = x.Landmark,
-                    Remarks = x.Remarks,
-                    DeliveryNotes = x.DeliveryNotes,
+         x.HouseDoorNo,
 
-                    Latitude = x.Latitude,
-                    Longitude = x.Longitude,
+         x.Landmark,
+         x.Remarks,
+         x.DeliveryNotes,
 
-                    IsActive = x.IsActive,
-                    CreatedAt = x.CreatedAt
-                })
-                .ToListAsync();
+         x.Latitude,
+         x.Longitude,
+
+         x.IsActive,
+         x.CreatedAt
+     })
+     .ToListAsync();
+
+            return customers.Select(x => new CustomerResponse
+            {
+                Id = x.Id,
+                CustomerCode = x.CustomerCode,
+                CustomerName = x.CustomerName,
+                MobileNo = x.MobileNo,
+                AlternateMobileNo = x.AlternateMobileNo,
+                Email = x.Email,
+
+                AreaId = x.AreaId,
+                AreaCode = x.AreaCode,
+                AreaName = x.AreaName,
+
+                DeliveryLocationId = x.DeliveryLocationId,
+                DeliveryLocationName = x.DeliveryLocationName,
+
+                HouseDoorNo = x.HouseDoorNo,
+
+                Address = x.DoorNoAtEnd
+                    ? string.Join(", ", new[]
+                    {
+            $"{x.DeliveryLocationName} {x.HouseDoorNo}",
+            x.DeliveryLocationAddress
+                    }.Where(s => !string.IsNullOrWhiteSpace(s)))
+                    : string.Join(", ", new[]
+                    {
+            x.HouseDoorNo,
+            x.DeliveryLocationName,
+            x.DeliveryLocationAddress
+                    }.Where(s => !string.IsNullOrWhiteSpace(s))),
+
+                Landmark = x.Landmark,
+                Remarks = x.Remarks,
+                DeliveryNotes = x.DeliveryNotes,
+
+                Latitude = x.Latitude,
+                Longitude = x.Longitude,
+
+                IsActive = x.IsActive,
+                CreatedAt = x.CreatedAt
+            }).ToList();
         }
 
         public async Task<CustomerResponse?> GetByIdAsync(

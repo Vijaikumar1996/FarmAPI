@@ -1,4 +1,5 @@
-﻿using FarmAPI.Entities;
+﻿using FarmAPI.DTOs;
+using FarmAPI.Entities;
 using static FarmAPI.DTOs.AreaDto;
 
 namespace FarmAPI.Interface
@@ -6,6 +7,8 @@ namespace FarmAPI.Interface
     public interface IAreaService
     {
         Task<List<Area>> GetAllAsync();
+
+        Task<List<DropdownDto>> GetDropdownAsync();
 
         Task<Area?> GetByIdAsync(long id);
 

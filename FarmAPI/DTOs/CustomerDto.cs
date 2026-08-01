@@ -101,7 +101,7 @@ namespace FarmAPI.DTOs
             public string? DeliveryLocationName { get; set; }
 
             public string HouseDoorNo { get; set; } = string.Empty;
-
+            public string Address { get; set; } = string.Empty;
             public string? Landmark { get; set; }
 
             public string? Remarks { get; set; }

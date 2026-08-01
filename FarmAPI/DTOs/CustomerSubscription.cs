@@ -76,6 +76,10 @@
 
         public string ProductName { get; set; } = string.Empty;
 
+        public string ProductCode { get; set; } = string.Empty;
+
+        public string Address { get; set; } = string.Empty;
+
         public string FrequencyName { get; set; } = string.Empty;
 
         public string ScheduleSummary { get; set; } = string.Empty;
@@ -101,5 +105,7 @@
             public long? ProductId { get; set; }
 
             public bool? IsActive { get; set; }
+
+             public long? AreaId { get; set; } 
         }
     }

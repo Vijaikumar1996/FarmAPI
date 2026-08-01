@@ -37,6 +37,9 @@ namespace FarmAPI.Entities
         [Column("delivery_order")]
         public int DeliveryOrder { get; set; }
 
+        [Column("door_no_at_end")]
+        public bool DoorNoAtEnd { get; set; }
+
         [ForeignKey(nameof(AreaId))]
         public Area? Area { get; set; }
     }

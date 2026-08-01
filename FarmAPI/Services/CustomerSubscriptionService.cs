@@ -26,10 +26,17 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
         var query = _context.CustomerSubscriptions
      .AsNoTracking()
      .Include(x => x.Customer)
+     .ThenInclude(c => c.DeliveryLocation)
      .Include(x => x.Product)
      .Include(x => x.Frequency)
      .Include(x => x.Schedules)
      .AsQueryable();
+
+        if (filter.AreaId.HasValue)
+        {
+            query = query.Where(x =>
+                x.Customer.AreaId == filter.AreaId.Value);
+        }
 
         if (filter.CustomerId.HasValue)
         {
@@ -258,15 +265,27 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
     }
 
 
-
     private static CustomerSubscriptionListDto MapToListDto(
-    CustomerSubscription entity)
+        CustomerSubscription entity)
     {
         return new CustomerSubscriptionListDto
         {
             Id = entity.Id,
             CustomerName = entity.Customer.CustomerName,
+            Address = entity.Customer.DeliveryLocation.DoorNoAtEnd
+            ? string.Join(", ", new[]
+            {
+                $"{entity.Customer.DeliveryLocation.LocationName} {entity.Customer.HouseDoorNo}",
+                entity.Customer.DeliveryLocation.Address
+            }.Where(x => !string.IsNullOrWhiteSpace(x)))
+            : string.Join(", ", new[]
+            {
+                entity.Customer.HouseDoorNo,
+                entity.Customer.DeliveryLocation.LocationName,
+                entity.Customer.DeliveryLocation.Address
+            }.Where(x => !string.IsNullOrWhiteSpace(x))),
             ProductName = entity.Product.ProductName,
+            ProductCode = entity.Product.ProductCode,
             FrequencyName = entity.Frequency.FrequencyName,
             ScheduleSummary = GetScheduleSummary(entity),
             IsActive = entity.IsActive

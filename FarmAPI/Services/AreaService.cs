@@ -1,4 +1,5 @@
 ﻿using FarmAPI.Data;
+using FarmAPI.DTOs;
 using FarmAPI.Entities;
 using FarmAPI.Interface;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,19 @@ namespace FarmAPI.Services
                 throw new Exception("Area not found.");
 
             return area;
+        }
+
+        public async Task<List<DropdownDto>> GetDropdownAsync()
+        {
+            return await _context.Areas
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.AreaName)
+                .Select(x => new DropdownDto
+                {
+                    Id = x.Id,
+                    Name = x.AreaCode + " - " + x.AreaName
+                })
+                .ToListAsync();
         }
 
         public async Task<Area> CreateAsync(

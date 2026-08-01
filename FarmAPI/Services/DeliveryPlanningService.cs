@@ -552,6 +552,8 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
                 HouseDoorNo = x.Customer.HouseDoorNo,
 
+                DoorNoAtEnd = x.Customer.DeliveryLocation.DoorNoAtEnd,
+
                 ProductId = x.ProductId,
 
                 ProductCode = x.Product.ProductCode,
@@ -573,6 +575,7 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 x.AreaCode,
                 x.DeliveryLocation,
                 x.DeliveryLocationAddress,
+                x.DoorNoAtEnd,
                 x.DeliveryOrder,
                 x.HouseDoorNo
             })
@@ -589,13 +592,21 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
                 CustomerName = customer.Key.CustomerName,
 
-                Address = string.Join(", ",
+                Address = customer.Key.DoorNoAtEnd
+                ? string.Join(", ",
                     new[]
                     {
-                    customer.Key.DeliveryLocation,
-                    customer.Key.DeliveryLocationAddress,
-                    customer.Key.HouseDoorNo
+                        $"{customer.Key.DeliveryLocation} {customer.Key.HouseDoorNo}",
+                        customer.Key.DeliveryLocationAddress
                     }
+                    .Where(x => !string.IsNullOrWhiteSpace(x)))
+                : string.Join(", ",
+                    new[]
+                    {
+                        customer.Key.HouseDoorNo,
+                        customer.Key.DeliveryLocation,
+                        customer.Key.DeliveryLocationAddress
+                    }        
                     .Where(x => !string.IsNullOrWhiteSpace(x))),
 
                 MilkProducts = customer
