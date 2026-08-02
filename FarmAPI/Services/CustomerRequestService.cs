@@ -132,6 +132,8 @@ public class CustomerRequestService : ICustomerRequestService
 
             ProductName = entity.Product?.ProductName,
 
+            ProductCode = entity.Product?.ProductCode,
+
             Quantity = entity.Quantity,
 
             EffectiveFrom = entity.EffectiveFrom,
@@ -240,6 +242,7 @@ public class CustomerRequestService : ICustomerRequestService
         {
             SubscriptionId = subscription.Id,
             ProductId = subscription.ProductId,
+            ProductCode = subscription.Product.ProductCode,
             ProductName = subscription.Product.ProductName,
 
             FrequencyId = subscription.FrequencyId,
@@ -268,6 +271,7 @@ public class CustomerRequestService : ICustomerRequestService
                     RequestAction = x.RequestAction,
                     ProductId = x.ProductId,
                     ProductName = x.Product?.ProductName,
+                    ProductCode = x.Product?.ProductCode,
                     Quantity = x.Quantity,
                     EffectiveFrom = x.EffectiveFrom,
                     EffectiveTo = x.EffectiveTo,

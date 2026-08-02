@@ -292,8 +292,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
         };
     }
 
-    private static string GetScheduleSummary(
-      CustomerSubscription entity)
+    private static string GetScheduleSummary(CustomerSubscription entity)
     {
         switch (entity.FrequencyId)
         {
@@ -308,7 +307,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
                 var dailyPattern = string.Join(" → ",
                     entity.Schedules
                         .OrderBy(x => x.PatternOrder)
-                        .Select(x => x.Quantity));
+                        .Select(x => FormatQuantity(x.Quantity)));
 
                 return $"Daily ({dailyPattern})";
 
@@ -319,7 +318,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
                     entity.Schedules
                         .OrderBy(x => x.DayOfWeek)
                         .Select(x =>
-                            $"{GetWeekDayName(x.DayOfWeek)} ({x.Quantity})"));
+                            $"{GetWeekDayName(x.DayOfWeek)} ({FormatQuantity(x.Quantity)})"));
 
             // Monthly
             case 3:
@@ -328,7 +327,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
                     entity.Schedules
                         .OrderBy(x => x.DayOfMonth)
                         .Select(x =>
-                            $"{GetOrdinal(x.DayOfMonth!.Value)} ({x.Quantity})"));
+                            $"{GetOrdinal(x.DayOfMonth!.Value)} ({FormatQuantity(x.Quantity)})"));
 
             // Interval
             case 4:
@@ -338,7 +337,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
                 var intervalPattern = string.Join(" → ",
                     entity.Schedules
                         .OrderBy(x => x.PatternOrder)
-                        .Select(x => x.Quantity));
+                        .Select(x => FormatQuantity(x.Quantity)));
 
                 return $"Every {interval} Days ({intervalPattern})";
 
@@ -346,6 +345,11 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
 
                 return string.Empty;
         }
+    }
+
+    private static string FormatQuantity(decimal quantity)
+    {
+        return quantity.ToString("0.##");
     }
 
     private static string GetOrdinal(int number)

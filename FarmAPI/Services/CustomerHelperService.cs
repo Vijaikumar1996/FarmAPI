@@ -24,25 +24,32 @@ namespace FarmAPI.Services
                 .ToHashSet();
         }
 
-        public  string GetCustomerRequestDescription(
-                CustomerRequest entity)
+        public string GetCustomerRequestDescription(CustomerRequest entity)
         {
-            var productName = entity.Product?.ProductName ?? "All Products";
+            var productName = entity.Product?.ProductCode ?? "All Products";
+            var quantity = entity.Quantity.HasValue
+                            ? entity.Quantity.Value.ToString("0.##")
+                            : "0";
 
             return entity.RequestAction.ToUpper() switch
             {
                 "ADD" =>
-                    $"Add - {productName} x {entity.Quantity}",
+                    $"Add - {productName} x {quantity}",
 
                 "PAUSE" =>
                     $"Pause - {productName}",
 
                 "REPLACE" =>
-                    $"Replace - {productName} x {entity.Quantity}",
+                    $"Replace - {productName} x {quantity}",
 
                 _ =>
                     entity.RequestAction
             };
+        }
+
+        public  string FormatQuantity(decimal quantity)
+        {
+            return quantity.ToString("0.##");
         }
     }
 }

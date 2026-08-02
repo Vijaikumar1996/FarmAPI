@@ -7,5 +7,8 @@ namespace FarmAPI.Interface
         Task<HashSet<long>> GetSubscriptionCustomerIdsAsync();
         string GetCustomerRequestDescription(
                 CustomerRequest entity);
+
+        string FormatQuantity(decimal quantity);
+        
     }
 }

@@ -582,7 +582,7 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
             .OrderBy(x => x.Key.AreaCode)
             .ThenBy(x => x.Key.DeliveryOrder)
-            .ThenBy(x => x.Key.CustomerName)
+            .ThenBy(x => x.Key.HouseDoorNo)
 
             .Select(customer => new DeliveryBoySheetDto
             {
@@ -786,13 +786,13 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 string.Join(
                     Environment.NewLine,
                     customer.MilkProducts.Select(x =>
-                        $"{x.Quantity} {x.ProductCode}"));
+                       $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
 
             worksheet.Cell(row, 5).Value =
                 string.Join(
                     Environment.NewLine,
                     customer.OtherProducts.Select(x =>
-                        $"{x.Quantity} {x.ProductCode}"));
+                        $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
 
             worksheet.Row(row)
                 .Style.Alignment.WrapText = true;
@@ -855,7 +855,7 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 product.Key.ProductCode;
 
             worksheet.Cell(row, 2).Value =
-                product.Sum(x => x.Quantity);
+                FormatQuantity(product.Sum(x => x.Quantity));
 
             row++;
         }
@@ -932,5 +932,10 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         worksheet.Style.Font.FontName = "Calibri";
 
         worksheet.Style.Font.FontSize = 11;
+    }
+
+    private static string FormatQuantity(decimal quantity)
+    {
+        return quantity.ToString("0.##");
     }
 }
