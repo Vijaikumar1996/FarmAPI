@@ -97,8 +97,9 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             var customerRequests = await _context.CustomerRequests
      .AsNoTracking()
      .Where(x =>
-         //(x.Status == CustomerRequestStatus.Pending ||
+          //(x.Status == CustomerRequestStatus.Pending ||
           //x.Status == CustomerRequestStatus.InProgress) &&
+          x.Status != CustomerRequestStatus.Cancelled &&
          x.IsActive &&
          x.EffectiveFrom <= request.DeliveryDate &&
          (x.EffectiveTo == null ||
