@@ -127,7 +127,9 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
         await ValidateScheduleConflictAsync(
     null,
     dto.CustomerId,
-    dto.ProductId);
+    dto.ProductId,
+    dto.StartDate,
+    dto.EndDate);
 
         //await ValidateOverlappingSubscriptionAsync(dto);
 
@@ -206,7 +208,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
         await ValidateScheduleConflictAsync(
      dto.Id,
      dto.CustomerId,
-     dto.ProductId);
+     dto.ProductId, dto.StartDate, dto.EndDate);
 
         await using var transaction =
             await _context.Database.BeginTransactionAsync();
@@ -642,21 +644,25 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
     }
 
     private async Task ValidateScheduleConflictAsync(
-    long? subscriptionId,
-    long customerId,
-    long productId)
+     long? subscriptionId,
+     long customerId,
+     long productId,
+     DateOnly startDate,
+     DateOnly? endDate)
     {
         bool exists = await _context.CustomerSubscriptions
             .AnyAsync(x =>
                 x.Id != subscriptionId &&
                 x.CustomerId == customerId &&
                 x.ProductId == productId &&
-                x.IsActive);
+                x.IsActive &&
+                x.StartDate <= (endDate ?? DateOnly.MaxValue) &&
+                (x.EndDate ?? DateOnly.MaxValue) >= startDate);
 
         if (exists)
         {
             throw new ValidationException(
-                "An active subscription already exists for this customer and product.");
+                "An active subscription already exists for this customer and product during the selected date range.");
         }
     }
 
