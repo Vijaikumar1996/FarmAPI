@@ -111,21 +111,22 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
             foreach (var subscription in subscriptions)
             {
-                if (!IsDeliveryApplicable(subscription, request.DeliveryDate))
+                
+                var replaceRequest = customerRequests.FirstOrDefault(x =>
+                    x.SubscriptionId == subscription.Id &&
+                    x.RequestAction == CustomerRequestAction.Replace);
+
+                if (replaceRequest == null && !IsDeliveryApplicable(subscription, request.DeliveryDate))
                     continue;
               
                 decimal quantity = GetQuantity(
                     subscription,
                     request.DeliveryDate);
-              
+
 
                 var pauseRequest = customerRequests.FirstOrDefault(x =>
                     x.SubscriptionId == subscription.Id &&
                     x.RequestAction == CustomerRequestAction.Pause);
-
-                var replaceRequest = customerRequests.FirstOrDefault(x =>
-                    x.SubscriptionId == subscription.Id &&
-                    x.RequestAction == CustomerRequestAction.Replace);
 
                 var deliveries = BuildDeliveries(
                     subscription,
