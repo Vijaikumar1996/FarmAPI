@@ -184,15 +184,20 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
                 foreach (var customerRequest in requests)
                 {
-                    if (customerRequest.EffectiveFrom <= request.DeliveryDate)
+                    if (customerRequest.Status == CustomerRequestStatus.Cancelled ||
+                        customerRequest.Status == CustomerRequestStatus.Processed)
                     {
-                        customerRequest.Status = CustomerRequestStatus.InProgress;
+                        continue;
                     }
 
                     if (customerRequest.EffectiveTo.HasValue &&
                         customerRequest.EffectiveTo.Value <= request.DeliveryDate)
                     {
                         customerRequest.Status = CustomerRequestStatus.Processed;
+                    }
+                    else if (customerRequest.EffectiveFrom <= request.DeliveryDate)
+                    {
+                        customerRequest.Status = CustomerRequestStatus.InProgress;
                     }
                 }
             }
