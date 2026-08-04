@@ -95,14 +95,15 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                           .SellingPrice);
 
             var customerRequests = await _context.CustomerRequests
-    .AsNoTracking()
-    .Where(x =>
-        x.Status == CustomerRequestStatus.Pending &&
-        x.IsActive &&
-        x.EffectiveFrom <= request.DeliveryDate &&
-        (x.EffectiveTo == null ||
-         x.EffectiveTo >= request.DeliveryDate))
-    .ToListAsync();
+     .AsNoTracking()
+     .Where(x =>
+         (x.Status == CustomerRequestStatus.Pending ||
+          x.Status == CustomerRequestStatus.InProgress) &&
+         x.IsActive &&
+         x.EffectiveFrom <= request.DeliveryDate &&
+         (x.EffectiveTo == null ||
+          x.EffectiveTo >= request.DeliveryDate))
+     .ToListAsync();
 
             List<DeliveryDetail> deliveryDetails = new();
             HashSet<long> processedRequestIds = new();
