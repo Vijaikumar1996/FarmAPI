@@ -380,7 +380,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
             4 => "Thu",
             5 => "Fri",
             6 => "Sat",
-            7 => "Sun",
+            0 => "Sun",
             _ => string.Empty
         };
     }
@@ -552,7 +552,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
                 }
 
                 if (schedules.Any(x =>
-                    x.DayOfWeek < 1 ||
+                    x.DayOfWeek < 0 ||
                     x.DayOfWeek > 7))
                 {
                     throw new ValidationException(
