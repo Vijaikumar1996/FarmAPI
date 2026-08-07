@@ -25,6 +25,8 @@
 
             public string CustomerName { get; set; } = string.Empty;
 
+            public string Address { get; set; } = string.Empty;
+
             public string RequestAction { get; set; } = string.Empty;
 
             public string RequestDescription { get; set; } = string.Empty;

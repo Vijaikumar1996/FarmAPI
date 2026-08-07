@@ -29,6 +29,7 @@ public class CustomerRequestService : ICustomerRequestService
         var query = _context.CustomerRequests
     .AsNoTracking()
     .Include(x => x.Customer)
+    .ThenInclude(c => c.DeliveryLocation)
     .Include(x => x.Product)
     .Where(x => x.IsActive)
     .AsQueryable();
@@ -125,6 +126,19 @@ public class CustomerRequestService : ICustomerRequestService
             CustomerId = entity.CustomerId,
 
             CustomerName = entity.Customer.CustomerName,
+
+            Address = entity.Customer.DeliveryLocation.DoorNoAtEnd
+            ? string.Join(", ", new[]
+            {
+                $"{entity.Customer.DeliveryLocation.LocationName} {entity.Customer.HouseDoorNo}",
+                entity.Customer.DeliveryLocation.Address
+            }.Where(x => !string.IsNullOrWhiteSpace(x)))
+            : string.Join(", ", new[]
+            {
+                entity.Customer.HouseDoorNo,
+                entity.Customer.DeliveryLocation.LocationName,
+                entity.Customer.DeliveryLocation.Address
+            }.Where(x => !string.IsNullOrWhiteSpace(x))),
 
             RequestAction = entity.RequestAction,
 
