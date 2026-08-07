@@ -19,6 +19,9 @@ namespace FarmAPI.Entities
         [Column("is_active")]
         public bool IsActive { get; set; }
 
+        [Column("group_delivery_sheet_by_location")]
+        public bool GroupDeliverySheetByLocation { get; set; }
+
         [Column("created_at")]
         public DateTime CreatedAt { get; set; }
 

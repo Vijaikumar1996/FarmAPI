@@ -552,6 +552,8 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
                 AreaCode = x.Customer.Area.AreaCode,
 
+                groupDeliverySheetByLocation = x.Customer.Area.GroupDeliverySheetByLocation,
+
                 DeliveryLocation = x.Customer.DeliveryLocation.LocationName,
 
                 DeliveryLocationAddress = x.Customer.DeliveryLocation.Address,
@@ -583,6 +585,7 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 x.AreaCode,
                 x.DeliveryLocation,
                 x.DeliveryLocationAddress,
+                x.groupDeliverySheetByLocation,
                 x.DoorNoAtEnd,
                 x.DeliveryOrder,
                 x.HouseDoorNo
@@ -599,6 +602,10 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 AreaCode = customer.Key.AreaCode,
 
                 CustomerName = customer.Key.CustomerName,
+
+                DeliveryLocation = customer.Key.DeliveryLocation,
+
+                GroupDeliverySheetByLocation = customer.Key.groupDeliverySheetByLocation,
 
                 Address = customer.Key.DoorNoAtEnd
                 ? string.Join(", ",
@@ -679,8 +686,8 @@ public class DeliveryPlanningService : IDeliveryPlanningService
     }
 
     public async Task<byte[]> ExportDeliveryBoySheetAsync(
-    DateOnly deliveryDate,
-    long? areaId)
+     DateOnly deliveryDate,
+     long? areaId)
     {
         var data = await GetDeliveryBoySheetAsync(
             deliveryDate,
@@ -778,47 +785,86 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         // ===========================
 
         var row = 5;
+        var locationGroups = customers
+    .GroupBy(x => x.DeliveryLocation)
+    .OrderBy(x => x.First().DeliveryLocation);
 
-        foreach (var customer in customers)
+        foreach (var location in locationGroups)
         {
-            worksheet.Cell(row, 1).Value =
-                customer.AreaCode;
+            // Location heading
+            //worksheet.Cell(row, 1).Value = location.Key;
+            //worksheet.Range(row, 1, row, 5).Merge();
+            //worksheet.Cell(row, 1).Style.Font.Bold = true;
+            //worksheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
 
-            worksheet.Cell(row, 2).Value =
-                customer.CustomerName;
-
-            worksheet.Cell(row, 3).Value =
-                customer.Address;
-
-            worksheet.Cell(row, 4).Value =
-                string.Join(
-                    Environment.NewLine,
-                    customer.MilkProducts.Select(x =>
-                       $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
-
-            worksheet.Cell(row, 5).Value =
-                string.Join(
-                    Environment.NewLine,
-                    customer.OtherProducts.Select(x =>
-                        $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
-
-            worksheet.Row(row)
-                .Style.Alignment.WrapText = true;
-
-            worksheet.Row(row)
-                .Style.Alignment.Vertical =
-                XLAlignmentVerticalValues.Top;
-
-            if (customer.OtherProducts.Any())
+           // row++;
+            foreach (var customer in location)
             {
-                worksheet.Range(row, 1, row, 5)
-                    .Style.Fill.BackgroundColor =
-                    XLColor.LightYellow;
-            }
+                worksheet.Cell(row, 1).Value =
+                    customer.AreaCode;
 
-            row++;
+                worksheet.Cell(row, 2).Value =
+                    customer.CustomerName;
+
+                worksheet.Cell(row, 3).Value =
+                    customer.Address;
+
+                worksheet.Cell(row, 4).Value =
+                    string.Join(
+                        Environment.NewLine,
+                        customer.MilkProducts.Select(x =>
+                           $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
+
+                worksheet.Cell(row, 5).Value =
+                    string.Join(
+                        Environment.NewLine,
+                        customer.OtherProducts.Select(x =>
+                            $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
+
+                worksheet.Row(row)
+                    .Style.Alignment.WrapText = true;
+
+                worksheet.Row(row)
+                    .Style.Alignment.Vertical =
+                    XLAlignmentVerticalValues.Top;
+
+                if (customer.OtherProducts.Any())
+                {
+                    worksheet.Range(row, 1, row, 5)
+                        .Style.Fill.BackgroundColor =
+                        XLColor.Yellow;
+                }
+
+                row++;
+            }
+            if (location.First().GroupDeliverySheetByLocation)
+            {
+                var locationSummary = location
+     .SelectMany(x => x.MilkProducts.Concat(x.OtherProducts))
+     .GroupBy(x => new
+     {
+         x.ProductCode,
+         x.DisplayOrder
+     })
+     .OrderBy(x => x.Key.DisplayOrder ?? int.MaxValue)
+     .ThenBy(x => x.Key.ProductCode)
+     .Select(x => $"{FormatQuantity(x.Sum(p => p.Quantity))} {x.Key.ProductCode}");
+
+                worksheet.Cell(row, 4).Value = string.Join(", ", locationSummary);
+
+                // Highlight the entire summary row
+                var summaryRange = worksheet.Range(row, 1, row, 5);
+
+                summaryRange.Style.Fill.BackgroundColor = XLColor.Yellow;
+                summaryRange.Style.Font.Bold = true;
+                summaryRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                summaryRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+                row++;      // Move to next row
+                row++;      // Blank row between locations
+            }
         }
-        // ===========================
+            // ===========================
         // Loading Summary
         // ===========================
 
@@ -939,8 +985,8 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
         worksheet.Style.Font.FontName = "Calibri";
 
-        worksheet.Style.Font.FontSize = 11;
-    }
+        worksheet.Style.Font.FontSize = 12;
+    }   
 
     private static string FormatQuantity(decimal quantity)
     {

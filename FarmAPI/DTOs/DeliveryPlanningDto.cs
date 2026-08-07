@@ -82,6 +82,10 @@
 
             public string Address { get; set; } = string.Empty;
 
+            public string DeliveryLocation { get; set; } = string.Empty;
+
+            public bool GroupDeliverySheetByLocation { get; set; }
+
             public List<DeliveryBoyProductDto> MilkProducts { get; set; } = new();
 
             public List<DeliveryBoyProductDto> OtherProducts { get; set; } = new();
@@ -91,7 +95,7 @@
         {
             public long ProductId { get; set; }
 
-            public string ProductCode { get; set; } = string.Empty;
+            public string ProductCode { get; set; } = string.Empty;            
 
             public decimal Quantity { get; set; }
 
