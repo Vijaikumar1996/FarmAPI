@@ -553,7 +553,7 @@ public class CustomerSubscriptionService : ICustomerSubscriptionService
 
                 if (schedules.Any(x =>
                     x.DayOfWeek < 0 ||
-                    x.DayOfWeek > 7))
+                    x.DayOfWeek > 6))
                 {
                     throw new ValidationException(
                         "Invalid weekday.");

@@ -717,7 +717,7 @@ public class CustomerRequestService : ICustomerRequestService
             4 => "Thu",
             5 => "Fri",
             6 => "Sat",
-            7 => "Sun",
+            0 => "Sun",
             _ => string.Empty
         };
     }
@@ -835,9 +835,7 @@ public class CustomerRequestService : ICustomerRequestService
 
             case 2: // Weekly
                 {
-                    int dayOfWeek = deliveryDate.DayOfWeek == DayOfWeek.Sunday
-                        ? 7
-                        : (int)deliveryDate.DayOfWeek;
+                    int dayOfWeek = (int)deliveryDate.DayOfWeek;
 
                     return subscription.Schedules.Any(x =>
                         x.DayOfWeek == dayOfWeek);
