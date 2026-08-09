@@ -252,6 +252,11 @@ public class CustomerRequestService : ICustomerRequestService
             (r.RequestAction == CustomerRequestAction.Pause ||
              r.RequestAction == CustomerRequestAction.Replace));
 
+        // ✅ Calculate quantities
+        //var todayQuantity = GetQuantity(subscription, deliveryDate);
+       // var tomorrowDate = deliveryDate.AddDays(1);
+        var selectedDateQuantity = GetQuantity(subscription, deliveryDate);
+
         return new CustomerSubscriptionLookupDto
         {
             SubscriptionId = subscription.Id,
@@ -273,7 +278,9 @@ public class CustomerRequestService : ICustomerRequestService
             ScheduleDescription = GetScheduleDescription(subscription),
 
             HasPendingRequest = pendingRequest != null,
-            PendingRequestAction = pendingRequest?.RequestAction
+            PendingRequestAction = pendingRequest?.RequestAction,
+
+            SelectedDateQuantity = selectedDateQuantity
         };
     })
     .ToList(),
@@ -659,6 +666,82 @@ public class CustomerRequestService : ICustomerRequestService
                 throw new ValidationException(
                     "Customer already has this product scheduled for the selected period. Use Replace instead.");
             }
+        }
+    }
+
+
+    private static decimal GetQuantity(
+    CustomerSubscription subscription,
+    DateOnly deliveryDate)
+    {
+        if (subscription.Schedules == null || !subscription.Schedules.Any())
+            return 0;
+
+        switch (subscription.FrequencyId)
+        {
+            case 1: // Daily (Pattern-based: 1 → 2 → 1 → 2)
+                {
+                    var schedules = subscription.Schedules
+                        .OrderBy(x => x.PatternOrder)
+                        .ToList();
+
+                    var daysDiff = (deliveryDate.ToDateTime(TimeOnly.MinValue) -
+                                   subscription.StartDate.ToDateTime(TimeOnly.MinValue)).Days;
+
+                    if (daysDiff < 0) return 0;
+
+                    var index = daysDiff % schedules.Count;
+
+                    return schedules[index].Quantity;
+                }
+
+            case 2: // Weekly (specific days)
+                {
+                    var dayOfWeek = (int)deliveryDate.DayOfWeek;
+
+                    var schedule = subscription.Schedules
+                        .FirstOrDefault(x => x.DayOfWeek == dayOfWeek);
+
+                    return schedule?.Quantity ?? 0;
+                }
+
+            case 3: // Monthly (specific dates)
+                {
+                    var day = deliveryDate.Day;
+
+                    var schedule = subscription.Schedules
+                        .FirstOrDefault(x => x.DayOfMonth == day);
+
+                    return schedule?.Quantity ?? 0;
+                }
+
+            case 4: // Interval (every N days with pattern)
+                {
+                    if (!subscription.IntervalDays.HasValue || subscription.IntervalDays <= 0)
+                        return 0;
+
+                    var schedules = subscription.Schedules
+                        .OrderBy(x => x.PatternOrder)
+                        .ToList();
+
+                    var daysDiff = (deliveryDate.ToDateTime(TimeOnly.MinValue) -
+                                   subscription.StartDate.ToDateTime(TimeOnly.MinValue)).Days;
+
+                    if (daysDiff < 0) return 0;
+
+                    // Check if today is a delivery day
+                    if (daysDiff % subscription.IntervalDays.Value != 0)
+                        return 0;
+
+                    // Pattern rotation
+                    var occurrenceIndex = daysDiff / subscription.IntervalDays.Value;
+                    var patternIndex = occurrenceIndex % schedules.Count;
+
+                    return schedules[patternIndex].Quantity;
+                }
+
+            default:
+                return 0;
         }
     }
 

@@ -120,6 +120,8 @@
             // Existing
             public bool HasPendingRequest { get; set; }
             public string? PendingRequestAction { get; set; }
+         
+            public decimal SelectedDateQuantity { get; set; }
         }
 
         public class CreateCustomerRequestDto
