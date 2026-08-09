@@ -77,15 +77,17 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             // Load active subscriptions (WITH AREA FILTER)
             // ===========================
             var subscriptions = await _context.CustomerSubscriptions
-                .Include(x => x.Schedules)
-                .Include(x => x.Customer)
-                    .ThenInclude(c => c.Area)
-                .Where(x =>
-                    x.IsActive &&
-                    x.Customer.Area.IsActive &&   // ✅ AREA FILTER
-                    x.StartDate <= request.DeliveryDate &&
-                    (x.EndDate == null || x.EndDate >= request.DeliveryDate))
-                .ToListAsync();
+     .Include(x => x.Schedules)
+     .Include(x => x.Product) // ✅ ADD
+     .Include(x => x.Customer)
+         .ThenInclude(c => c.Area)
+     .Where(x =>
+         x.IsActive &&
+         x.Product.IsActive &&        // ✅ PRODUCT FILTER
+         x.Customer.Area.IsActive &&
+         x.StartDate <= request.DeliveryDate &&
+         (x.EndDate == null || x.EndDate >= request.DeliveryDate))
+     .ToListAsync();
 
             // ===========================
             // Load prices
@@ -107,17 +109,19 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             // Load customer requests (WITH AREA FILTER)
             // ===========================
             var customerRequests = await _context.CustomerRequests
-                .Include(x => x.Customer)
-                    .ThenInclude(c => c.Area)
-                .AsNoTracking()
-                .Where(x =>
-                    x.Status != CustomerRequestStatus.Cancelled &&
-                    x.IsActive &&
-                    x.Customer.Area.IsActive &&   // ✅ AREA FILTER
-                    x.EffectiveFrom <= request.DeliveryDate &&
-                    (x.EffectiveTo == null ||
-                     x.EffectiveTo >= request.DeliveryDate))
-                .ToListAsync();
+     .Include(x => x.Product) // ✅ ADD
+     .Include(x => x.Customer)
+         .ThenInclude(c => c.Area)
+     .AsNoTracking()
+     .Where(x =>
+         x.Status != CustomerRequestStatus.Cancelled &&
+         x.IsActive &&
+         x.Customer.Area.IsActive &&
+         x.Product.IsActive &&     // ✅ PRODUCT FILTER
+         x.EffectiveFrom <= request.DeliveryDate &&
+         (x.EffectiveTo == null ||
+          x.EffectiveTo >= request.DeliveryDate))
+     .ToListAsync();
 
             List<DeliveryDetail> deliveryDetails = new();
             HashSet<long> processedRequestIds = new();
@@ -129,6 +133,9 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             {
                 // Extra safety check
                 if (!subscription.Customer.Area.IsActive)
+                    continue;
+
+                if (!subscription.Product.IsActive)
                     continue;
 
                 var replaceRequest = customerRequests.FirstOrDefault(x =>
@@ -178,6 +185,9 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             {
                 // Extra safety check
                 if (!addRequest.Customer.Area.IsActive)
+                    continue;
+
+                if (!addRequest.Product.IsActive)
                     continue;
 
                 deliveryDetails.Add(CreateDelivery(
