@@ -59,32 +59,41 @@ public class DeliveryPlanningService : IDeliveryPlanningService
     }
 
     public async Task<GenerateDeliveryResponse> GenerateDeliveryAsync(
-        GenerateDeliveryRequest request)
+     GenerateDeliveryRequest request)
     {
         long userId = _currentUser.UserId;
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
+            // ===========================
             // Delete existing deliveries
+            // ===========================
             await _context.DeliveryDetails
-    .Where(x => x.DeliveryDate == request.DeliveryDate)
-    .ExecuteDeleteAsync();
+                .Where(x => x.DeliveryDate == request.DeliveryDate)
+                .ExecuteDeleteAsync();
 
-            // Load active subscriptions
+            // ===========================
+            // Load active subscriptions (WITH AREA FILTER)
+            // ===========================
             var subscriptions = await _context.CustomerSubscriptions
                 .Include(x => x.Schedules)
+                .Include(x => x.Customer)
+                    .ThenInclude(c => c.Area)
                 .Where(x =>
                     x.IsActive &&
+                    x.Customer.Area.IsActive &&   // ✅ AREA FILTER
                     x.StartDate <= request.DeliveryDate &&
                     (x.EndDate == null || x.EndDate >= request.DeliveryDate))
                 .ToListAsync();
 
-            // Load prices once
+            // ===========================
+            // Load prices
+            // ===========================
             var productPrices = await _context.ProductPrices
-     .AsNoTracking()
-     .Where(x => x.EffectiveFrom <= request.DeliveryDate)
-     .ToListAsync();
+                .AsNoTracking()
+                .Where(x => x.EffectiveFrom <= request.DeliveryDate)
+                .ToListAsync();
 
             var priceDictionary = productPrices
                 .GroupBy(x => x.ProductId)
@@ -94,35 +103,45 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                           .First()
                           .SellingPrice);
 
+            // ===========================
+            // Load customer requests (WITH AREA FILTER)
+            // ===========================
             var customerRequests = await _context.CustomerRequests
-     .AsNoTracking()
-     .Where(x =>
-          //(x.Status == CustomerRequestStatus.Pending ||
-          //x.Status == CustomerRequestStatus.InProgress) &&
-          x.Status != CustomerRequestStatus.Cancelled &&
-         x.IsActive &&
-         x.EffectiveFrom <= request.DeliveryDate &&
-         (x.EffectiveTo == null ||
-          x.EffectiveTo >= request.DeliveryDate))
-     .ToListAsync();
+                .Include(x => x.Customer)
+                    .ThenInclude(c => c.Area)
+                .AsNoTracking()
+                .Where(x =>
+                    x.Status != CustomerRequestStatus.Cancelled &&
+                    x.IsActive &&
+                    x.Customer.Area.IsActive &&   // ✅ AREA FILTER
+                    x.EffectiveFrom <= request.DeliveryDate &&
+                    (x.EffectiveTo == null ||
+                     x.EffectiveTo >= request.DeliveryDate))
+                .ToListAsync();
 
             List<DeliveryDetail> deliveryDetails = new();
             HashSet<long> processedRequestIds = new();
 
+            // ===========================
+            // Process subscriptions
+            // ===========================
             foreach (var subscription in subscriptions)
             {
-                
+                // Extra safety check
+                if (!subscription.Customer.Area.IsActive)
+                    continue;
+
                 var replaceRequest = customerRequests.FirstOrDefault(x =>
                     x.SubscriptionId == subscription.Id &&
                     x.RequestAction == CustomerRequestAction.Replace);
 
-                if (replaceRequest == null && !IsDeliveryApplicable(subscription, request.DeliveryDate))
+                if (replaceRequest == null &&
+                    !IsDeliveryApplicable(subscription, request.DeliveryDate))
                     continue;
-              
+
                 decimal quantity = GetQuantity(
                     subscription,
                     request.DeliveryDate);
-
 
                 var pauseRequest = customerRequests.FirstOrDefault(x =>
                     x.SubscriptionId == subscription.Id &&
@@ -146,14 +165,21 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                     processedRequestIds.Add(replaceRequest.Id);
             }
 
+            // ===========================
+            // Handle ADD requests (non-subscription)
+            // ===========================
             var addRequests = customerRequests
                 .Where(x =>
-                x.RequestAction == CustomerRequestAction.Add &&
-                x.SubscriptionId == null)
+                    x.RequestAction == CustomerRequestAction.Add &&
+                    x.SubscriptionId == null)
                 .ToList();
 
             foreach (var addRequest in addRequests)
             {
+                // Extra safety check
+                if (!addRequest.Customer.Area.IsActive)
+                    continue;
+
                 deliveryDetails.Add(CreateDelivery(
                     customerId: addRequest.CustomerId,
                     subscriptionId: null,
@@ -169,14 +195,17 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 processedRequestIds.Add(addRequest.Id);
             }
 
-
-
+            // ===========================
+            // Save deliveries
+            // ===========================
             if (deliveryDetails.Any())
             {
                 await _context.DeliveryDetails.AddRangeAsync(deliveryDetails);
             }
 
-           
+            // ===========================
+            // Update request statuses
+            // ===========================
             if (processedRequestIds.Any())
             {
                 var requests = await _context.CustomerRequests
@@ -204,7 +233,6 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             }
 
             await _context.SaveChangesAsync();
-
             await transaction.CommitAsync();
 
             return new GenerateDeliveryResponse
