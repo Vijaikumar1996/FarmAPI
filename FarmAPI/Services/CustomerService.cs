@@ -334,17 +334,14 @@ namespace FarmAPI.Services
             if (!string.IsNullOrWhiteSpace(searchText))
             {
                 query = query.Where(x =>
-                    EF.Functions.ILike(
-                        x.CustomerName,
-                        $"%{searchText}%")
-                    ||
-                    EF.Functions.ILike(
-                        x.MobileNo,
-                        $"%{searchText}%")
-                    ||
-                    EF.Functions.ILike(
-                        x.CustomerCode,
-                        $"%{searchText}%"));
+            EF.Functions.ILike(x.CustomerName, $"%{searchText}%") ||
+            EF.Functions.ILike(x.MobileNo, $"%{searchText}%") ||
+            EF.Functions.ILike(x.AlternateMobileNo!, $"%{searchText}%") || // ✅ added
+            EF.Functions.ILike(x.CustomerCode, $"%{searchText}%") ||
+            EF.Functions.ILike(x.HouseDoorNo!, $"%{searchText}%") ||
+            EF.Functions.ILike(x.Area!.AreaName!, $"%{searchText}%") ||     // ✅ added
+            EF.Functions.ILike(x.DeliveryLocation!.LocationName!, $"%{searchText}%")        // ✅ optional
+        );
             }
 
             return await query
