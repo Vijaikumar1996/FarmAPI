@@ -33,7 +33,7 @@ namespace FarmAPI.Services
                 1);
 
             var subscriptionCustomerIds =
-      await _customerHelper.GetSubscriptionCustomerIdsAsync();
+                await _customerHelper.GetSubscriptionCustomerIdsAsync();
 
             var query = _context.CustomerMonthlyLedgers
                 .Where(x => x.BillingMonth == billingMonth);
@@ -45,7 +45,6 @@ namespace FarmAPI.Services
             }
 
             // Customer Type Filter
-
             if (!string.IsNullOrWhiteSpace(request.CustomerType))
             {
                 switch (request.CustomerType.ToUpper())
@@ -67,7 +66,6 @@ namespace FarmAPI.Services
             }
 
             // Payment Status Filter
-
             if (!string.IsNullOrWhiteSpace(request.PaymentStatus))
             {
                 switch (request.PaymentStatus.ToUpper())
@@ -89,10 +87,8 @@ namespace FarmAPI.Services
             }
 
             var billingList = await query
-
                 .OrderBy(x => x.Customer.CustomerName)
-
-                .Select(x => new BillingListResponse
+                .Select(x => new
                 {
                     BillingId = x.Id,
 
@@ -107,6 +103,17 @@ namespace FarmAPI.Services
                             ? x.Customer.DeliveryLocation.LocationName
                             : null,
 
+                    HouseDoorNo = x.Customer.HouseDoorNo,
+
+                    LocationAddress =
+                        x.Customer.DeliveryLocation != null
+                            ? x.Customer.DeliveryLocation.Address
+                            : null,
+
+                    DoorNoAtEnd =
+                        x.Customer.DeliveryLocation != null
+                            && x.Customer.DeliveryLocation.DoorNoAtEnd,
+
                     BillingMonth = x.BillingMonth,
 
                     ProductAmount = x.ProductAmount,
@@ -119,22 +126,70 @@ namespace FarmAPI.Services
 
                     CurrentMonthBalance = x.BalanceAmount
                 })
-
                 .ToListAsync();
+
+            // Build the final response after EF has finished executing
+            var billingItems = billingList
+                .Select(x =>
+                {
+                    var addressParts = x.DoorNoAtEnd
+                        ? new[]
+                        {
+                    $"{x.DeliveryLocationName} {x.HouseDoorNo}",
+                    x.LocationAddress
+                        }
+                        : new[]
+                        {
+                    x.HouseDoorNo,
+                    x.DeliveryLocationName,
+                    x.LocationAddress
+                        };
+
+                    var address = string.Join(
+                        ", ",
+                        addressParts.Where(x =>
+                            !string.IsNullOrWhiteSpace(x)));
+
+                    return new BillingListResponse
+                    {
+                        BillingId = x.BillingId,
+
+                        CustomerId = x.CustomerId,
+
+                        CustomerName = x.CustomerName,                     
+
+                        Address = address,
+
+                        DeliveryLocationName = x.DeliveryLocationName,
+
+                        BillingMonth = x.BillingMonth,
+
+                        ProductAmount = x.ProductAmount,
+
+                        DeliveryCharge = x.DeliveryCharge,
+
+                        AdjustmentAmount = x.AdjustmentAmount,
+
+                        PaidAmount = x.PaidAmount,
+
+                        CurrentMonthBalance = x.CurrentMonthBalance
+                    };
+                })
+                .ToList();
 
             var summary = new BillingSummaryResponse
             {
-                CustomerCount = billingList.Count,
+                CustomerCount = billingItems.Count,
 
-                TotalBill = billingList.Sum(x =>
+                TotalBill = billingItems.Sum(x =>
                     x.ProductAmount +
                     x.DeliveryCharge +
                     x.AdjustmentAmount),
 
-                TotalCollected = billingList.Sum(x =>
+                TotalCollected = billingItems.Sum(x =>
                     x.PaidAmount),
 
-                TotalOutstanding = billingList.Sum(x =>
+                TotalOutstanding = billingItems.Sum(x =>
                     x.CurrentMonthBalance)
             };
 
@@ -142,7 +197,7 @@ namespace FarmAPI.Services
             {
                 Summary = summary,
 
-                Items = billingList
+                Items = billingItems
             };
         }
 
@@ -340,25 +395,37 @@ namespace FarmAPI.Services
         }
 
         public async Task<BillingDetailsResponse> GetBillingDetailsAsync(
-    long customerId,
-    DateOnly billingMonth)
+     long customerId,
+     DateOnly billingMonth)
         {
             billingMonth = new DateOnly(
                 billingMonth.Year,
                 billingMonth.Month,
                 1);
 
+            // Get monthly ledger details
             var ledger = await _context.CustomerMonthlyLedgers
-
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth == billingMonth)
-
                 .Select(x => new
                 {
                     x,
 
                     CustomerName = x.Customer.CustomerName,
+
+                    HouseDoorNo = x.Customer.HouseDoorNo,
+
+                    LocationName = x.Customer.DeliveryLocation != null
+                        ? x.Customer.DeliveryLocation.LocationName
+                        : null,
+
+                    LocationAddress = x.Customer.DeliveryLocation != null
+                        ? x.Customer.DeliveryLocation.Address
+                        : null,
+
+                    DoorNoAtEnd = x.Customer.DeliveryLocation != null
+                        && x.Customer.DeliveryLocation.DoorNoAtEnd,
 
                     AreaName = x.Customer.Area.AreaName,
 
@@ -367,45 +434,61 @@ namespace FarmAPI.Services
                             ? x.Customer.DeliveryLocation.LocationName
                             : string.Empty
                 })
-
                 .FirstOrDefaultAsync();
 
             if (ledger == null)
                 throw new Exception("Monthly bill not found.");
 
-            var previousOutstanding = await _context.CustomerMonthlyLedgers
+            // Build address in C# instead of inside EF query
+            var addressParts = ledger.DoorNoAtEnd
+                ? new[]
+                {
+            $"{ledger.LocationName} {ledger.HouseDoorNo}",
+            ledger.LocationAddress
+                }
+                : new[]
+                {
+            ledger.HouseDoorNo,
+            ledger.LocationName,
+            ledger.LocationAddress
+                };
 
+            var address = string.Join(
+                ", ",
+                addressParts.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            // Get previous outstanding
+            var previousOutstanding = await _context.CustomerMonthlyLedgers
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth < billingMonth)
-
                 .SumAsync(x => x.BalanceAmount);
 
-            //var billMonth = DateOnly.FromDateTime(billingMonth);
-
+            // Get deliveries
             var deliveries = await _context.DeliveryDetails
                 .Where(x =>
                     x.CustomerId == customerId &&
-                    x.BillingMonth == billingMonth && 
+                    x.BillingMonth == billingMonth &&
                     x.Status == CustomerDeliveryStatus.Delivered)
                 .OrderBy(x => x.DeliveryDate)
                 .Select(x => new DeliveryDto
                 {
                     DeliveryDate = x.DeliveryDate,
+
                     ProductName = x.Product.ProductName,
+
                     Quantity = x.DeliveredQty,
+
                     Amount = x.DeliveredQty * x.UnitPrice
                 })
                 .ToListAsync();
 
+            // Get payments
             var payments = await _context.Payments
-
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth == billingMonth)
-
                 .OrderBy(x => x.PaymentDate)
-
                 .Select(x => new PaymentDto
                 {
                     PaymentDate = x.PaymentDate,
@@ -416,17 +499,14 @@ namespace FarmAPI.Services
 
                     Remarks = x.Remarks
                 })
-
                 .ToListAsync();
 
+            // Get billing adjustments
             var adjustments = await _context.BillingAdjustments
-
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth == billingMonth)
-
                 .OrderBy(x => x.AdjustmentDate)
-
                 .Select(x => new AdjustmentDto
                 {
                     AdjustmentDate = x.AdjustmentDate,
@@ -437,21 +517,22 @@ namespace FarmAPI.Services
 
                     Remarks = x.Remarks
                 })
-
                 .ToListAsync();
 
+            // Calculate current charges
             var currentCharges =
                 ledger.x.ProductAmount +
                 ledger.x.DeliveryCharge +
                 ledger.x.AdjustmentAmount;
 
+            // Build response
             return new BillingDetailsResponse
             {
                 Summary = new BillingSummaryDto
                 {
                     CustomerName = ledger.CustomerName,
 
-                    AreaName = ledger.AreaName,
+                    AreaName = address,
 
                     DeliveryLocation = ledger.DeliveryLocation,
 
@@ -494,11 +575,9 @@ namespace FarmAPI.Services
                 1);
 
             var ledger = await _context.CustomerMonthlyLedgers
-
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth == billingMonth)
-
                 .Select(x => new
                 {
                     x,
@@ -507,41 +586,66 @@ namespace FarmAPI.Services
 
                     MobileNo = x.Customer.MobileNo,
 
-                    AreaName = x.Customer.Area.AreaName,
+                    HouseDoorNo = x.Customer.HouseDoorNo,
+
+                    LocationName = x.Customer.DeliveryLocation != null
+                        ? x.Customer.DeliveryLocation.LocationName
+                        : null,
+
+                    LocationAddress = x.Customer.DeliveryLocation != null
+                        ? x.Customer.DeliveryLocation.Address
+                        : null,
+
+                    DoorNoAtEnd = x.Customer.DeliveryLocation != null
+                        && x.Customer.DeliveryLocation.DoorNoAtEnd,
 
                     DeliveryLocation =
                         x.Customer.DeliveryLocation != null
                             ? x.Customer.DeliveryLocation.LocationName
                             : string.Empty
                 })
-
                 .FirstOrDefaultAsync();
 
             if (ledger == null)
                 throw new Exception("Monthly bill not found.");
 
-            var previousOutstanding = await _context.CustomerMonthlyLedgers
+            // Build address in C# instead of inside EF query
+            var addressParts = ledger.DoorNoAtEnd
+                ? new[]
+                {
+            $"{ledger.LocationName} {ledger.HouseDoorNo}",
+            ledger.LocationAddress
+                }
+                : new[]
+                {
+            ledger.HouseDoorNo,
+            ledger.LocationName,
+            ledger.LocationAddress
+                };
 
+            var address = string.Join(
+                ", ",
+                addressParts.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            // Previous outstanding
+            var previousOutstanding = await _context.CustomerMonthlyLedgers
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth < billingMonth)
-
                 .SumAsync(x => x.BalanceAmount);
 
+            // Products
             var products = await _context.DeliveryDetails
-
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth == billingMonth &&
                     x.DeliveredQty > 0)
-
                 .GroupBy(x => new
                 {
                     x.ProductId,
                     x.Product.ProductName,
                     x.UnitPrice
                 })
-
                 .Select(x => new SummaryBillItemDto
                 {
                     ProductName = x.Key.ProductName,
@@ -554,14 +658,13 @@ namespace FarmAPI.Services
                         y.DeliveredQty * y.UnitPrice),
 
                     TotalDays = x.Select(y => y.DeliveryDate)
-                     .Distinct()
-                     .Count()
+                        .Distinct()
+                        .Count()
                 })
-
                 .OrderBy(x => x.ProductName)
-
                 .ToListAsync();
 
+            // Current charges
             var currentCharges =
                 ledger.x.ProductAmount +
                 ledger.x.DeliveryCharge +
@@ -594,7 +697,7 @@ namespace FarmAPI.Services
 
                     MobileNo = ledger.MobileNo,
 
-                    AreaName = ledger.AreaName,
+                    AreaName = address,
 
                     DeliveryLocation = ledger.DeliveryLocation,
 
