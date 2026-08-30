@@ -90,4 +90,19 @@ public class DeliveryPlanningController : ControllerBase
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             fileName);
     }
+
+    [HttpGet("expected-deliveries")]
+    public async Task<IActionResult> GetExpectedDeliveries(
+    [FromQuery] DateOnly deliveryDate,
+    [FromQuery] string source,
+    [FromQuery] long productId)
+    {
+        var result = await _service
+            .GetExpectedDeliveriesAsync(
+                deliveryDate,
+                source,
+                productId);
+
+        return Ok(result);
+    }
 }

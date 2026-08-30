@@ -156,7 +156,7 @@ namespace FarmAPI.Services
 
                         CustomerId = x.CustomerId,
 
-                        CustomerName = x.CustomerName,                     
+                        CustomerName = x.CustomerName,
 
                         Address = address,
 
@@ -235,7 +235,9 @@ namespace FarmAPI.Services
 
                     BillingMonth = billingMonth,
 
-                    PaymentDate = request.PaymentDate,
+                    PaymentDate = DateTime.SpecifyKind(
+    request.PaymentDate,
+    DateTimeKind.Utc),
 
                     Amount = request.Amount,
 
@@ -324,15 +326,25 @@ namespace FarmAPI.Services
                 if (request.Amount == 0)
                     throw new Exception("Adjustment amount cannot be zero.");
 
+                // Always store the adjustment as a signed value:
+                // CREDIT = positive
+                // DEBIT  = negative
+                var adjustmentAmount =
+                    request.AdjustmentType == "CREDIT"
+                        ? Math.Abs(request.Amount)
+                        : -Math.Abs(request.Amount);
+
                 var adjustment = new BillingAdjustment
                 {
                     CustomerId = request.CustomerId,
 
-                    BillingMonth = billingMonth,
+                    BillingMonth = billingMonth,                   
 
-                    AdjustmentDate = request.AdjustmentDate,
+                    AdjustmentDate = DateTime.SpecifyKind(
+    request.AdjustmentDate,
+    DateTimeKind.Utc),
 
-                    Amount = request.Amount,
+                    Amount = adjustmentAmount,
 
                     Reason = request.Reason.Trim(),
 
@@ -349,14 +361,18 @@ namespace FarmAPI.Services
 
                 _context.BillingAdjustments.Add(adjustment);
 
-                ledger.AdjustmentAmount += request.Amount;
+                // Store the signed adjustment in the monthly ledger.
+                ledger.AdjustmentAmount += adjustmentAmount;
 
-                ledger.BalanceAmount += request.Amount;
+                // Positive adjustment (CREDIT) reduces balance.
+                // Negative adjustment (DEBIT) increases balance.
+                ledger.BalanceAmount -= adjustmentAmount;
 
                 ledger.UpdatedAt = DateTime.UtcNow;
 
                 ledger.UpdatedBy = _currentUser.UserId;
 
+                // Update customer's overall outstanding.
                 var outstanding = await _context.CustomerOutstanding
                     .FirstOrDefaultAsync(x =>
                         x.CustomerId == request.CustomerId);
@@ -377,7 +393,9 @@ namespace FarmAPI.Services
                     _context.CustomerOutstanding.Add(outstanding);
                 }
 
-                outstanding.OutstandingAmount += request.Amount;
+                // Positive CREDIT reduces outstanding.
+                // Negative DEBIT increases outstanding.
+                outstanding.OutstandingAmount -= adjustmentAmount;
 
                 outstanding.UpdatedAt = DateTime.UtcNow;
 
@@ -455,7 +473,8 @@ namespace FarmAPI.Services
 
             var address = string.Join(
                 ", ",
-                addressParts.Where(x => !string.IsNullOrWhiteSpace(x)));
+                addressParts.Where(x =>
+                    !string.IsNullOrWhiteSpace(x)));
 
             // Get previous outstanding
             var previousOutstanding = await _context.CustomerMonthlyLedgers
@@ -491,7 +510,7 @@ namespace FarmAPI.Services
                 .OrderBy(x => x.PaymentDate)
                 .Select(x => new PaymentDto
                 {
-                    PaymentDate = x.PaymentDate,
+                    PaymentDate = DateOnly.FromDateTime(x.PaymentDate),
 
                     Amount = x.Amount,
 
@@ -509,8 +528,10 @@ namespace FarmAPI.Services
                 .OrderBy(x => x.AdjustmentDate)
                 .Select(x => new AdjustmentDto
                 {
-                    AdjustmentDate = x.AdjustmentDate,
+                    AdjustmentDate = DateOnly.FromDateTime(x.AdjustmentDate),                   
 
+                    // CREDIT = positive
+                    // DEBIT  = negative
                     Amount = x.Amount,
 
                     Reason = x.Reason,
@@ -520,9 +541,24 @@ namespace FarmAPI.Services
                 .ToListAsync();
 
             // Calculate current charges
+            //
+            // CREDIT  = positive adjustment -> reduces charges
+            // DEBIT   = negative adjustment -> increases charges
+            //
+            // Example:
+            // ProductAmount = 1000
+            // DeliveryCharge = 50
+            // CREDIT = +100
+            //
+            // CurrentCharges = 1000 + 50 - 100 = 950
+            //
+            // DEBIT = -100
+            //
+            // CurrentCharges = 1000 + 50 - (-100) = 1150
+
             var currentCharges =
                 ledger.x.ProductAmount +
-                ledger.x.DeliveryCharge +
+                ledger.x.DeliveryCharge -
                 ledger.x.AdjustmentAmount;
 
             // Build response
@@ -566,14 +602,15 @@ namespace FarmAPI.Services
         }
 
         public async Task<SummaryBillResponse> GetSummaryBillAsync(
-     long customerId,
-     DateOnly billingMonth)
+      long customerId,
+      DateOnly billingMonth)
         {
             billingMonth = new DateOnly(
                 billingMonth.Year,
                 billingMonth.Month,
                 1);
 
+            // Get monthly ledger
             var ledger = await _context.CustomerMonthlyLedgers
                 .Where(x =>
                     x.CustomerId == customerId &&
@@ -625,7 +662,8 @@ namespace FarmAPI.Services
 
             var address = string.Join(
                 ", ",
-                addressParts.Where(x => !string.IsNullOrWhiteSpace(x)));
+                addressParts.Where(x =>
+                    !string.IsNullOrWhiteSpace(x)));
 
             // Previous outstanding
             var previousOutstanding = await _context.CustomerMonthlyLedgers
@@ -644,16 +682,30 @@ namespace FarmAPI.Services
                 {
                     x.ProductId,
                     x.Product.ProductName,
+                    x.Product.LitresPerUnit,
                     x.UnitPrice
                 })
                 .Select(x => new SummaryBillItemDto
                 {
+                    DisplayOrder = x.Key.ProductId,
+
                     ProductName = x.Key.ProductName,
 
                     Quantity = x.Sum(y => y.DeliveredQty),
 
-                    UnitPrice = x.Key.UnitPrice,
+                    // Convert unit price to price per litre
+                    //
+                    // 0.5 litre -> ₹30 / 0.5 = ₹60/L
+                    // 1 litre   -> ₹60 / 1   = ₹60/L
+                    UnitPrice =
+                        x.Key.LitresPerUnit.HasValue &&
+                        x.Key.LitresPerUnit.Value > 0
+                            ? x.Key.UnitPrice / x.Key.LitresPerUnit.Value
+                            : x.Key.UnitPrice,
 
+                    LitresPerUnit = x.Key.LitresPerUnit,
+
+                    // Keep actual billed amount based on original unit price
                     Amount = x.Sum(y =>
                         y.DeliveredQty * y.UnitPrice),
 
@@ -661,13 +713,28 @@ namespace FarmAPI.Services
                         .Distinct()
                         .Count()
                 })
-                .OrderBy(x => x.ProductName)
+                .OrderBy(x => x.DisplayOrder)
                 .ToListAsync();
 
             // Current charges
+            //
+            // CREDIT = positive adjustment -> reduces charges
+            // DEBIT  = negative adjustment -> increases charges
+            //
+            // Example:
+            // Product Amount = ₹1000
+            // Delivery Charge = ₹50
+            // Credit = +₹100
+            //
+            // Current Charges = 1000 + 50 - 100 = ₹950
+            //
+            // Debit = -₹100
+            //
+            // Current Charges = 1000 + 50 - (-100) = ₹1150
+
             var currentCharges =
                 ledger.x.ProductAmount +
-                ledger.x.DeliveryCharge +
+                ledger.x.DeliveryCharge -
                 ledger.x.AdjustmentAmount;
 
             return new SummaryBillResponse
@@ -676,7 +743,9 @@ namespace FarmAPI.Services
                 {
                     FarmName = "Dhariya Farms",
 
-                    MobileNo = "9876543210",
+                    FarmQuote = "Inga Organic Venture",
+
+                    MobileNo = "7338861649",
 
                     BankName = "ICICI Bank",
 

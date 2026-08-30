@@ -205,6 +205,16 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 processedRequestIds.Add(addRequest.Id);
             }
 
+     //       var duplicateDeliveries = deliveryDetails
+     //.GroupBy(x => new
+     //{
+     //    x.DeliveryDate,
+     //    x.CustomerId,
+     //    x.ProductId
+     //})
+     //.Where(g => g.Count() > 1)
+     //.ToList();
+
             // ===========================
             // Save deliveries
             // ===========================
@@ -568,17 +578,22 @@ public class DeliveryPlanningService : IDeliveryPlanningService
     }
 
 
-    public async Task<List<DeliveryBoySheetDto>> GetDeliveryBoySheetAsync(
-    DateOnly deliveryDate,
-    long? areaId)
+    public async Task<List<DeliveryOrderDto>> GetDeliveryBoySheetAsync(
+      DateOnly deliveryDate,
+      long? areaId = null)
     {
+        // ============================================
+        // Load delivery details
+        // ============================================
+
         var query = _context.DeliveryDetails
             .AsNoTracking()
             .Where(x => x.DeliveryDate == deliveryDate);
 
         if (areaId.HasValue)
         {
-            query = query.Where(x => x.Customer.AreaId == areaId.Value);
+            query = query.Where(
+                x => x.Customer.AreaId == areaId.Value);
         }
 
         var data = await query
@@ -590,135 +605,306 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
                 AreaCode = x.Customer.Area.AreaCode,
 
-                groupDeliverySheetByLocation = x.Customer.Area.GroupDeliverySheetByLocation,
+                GroupDeliverySheetByLocation =
+                    x.Customer.Area.GroupDeliverySheetByLocation,
 
-                DeliveryLocation = x.Customer.DeliveryLocation.LocationName,
+                DeliveryLocation =
+                    x.Customer.DeliveryLocation.LocationName,
 
-                DeliveryLocationAddress = x.Customer.DeliveryLocation.Address,
+                DeliveryLocationAddress =
+                    x.Customer.DeliveryLocation.Address,
 
-                DeliveryOrder = x.Customer.DeliveryLocation.DeliveryOrder,
+                DeliveryNotes = x.Customer.DeliveryNotes,
 
-                HouseDoorNo = x.Customer.HouseDoorNo,
+                DeliveryOrder =
+                    x.Customer.DeliveryLocation.DeliveryOrder,
 
-                DoorNoAtEnd = x.Customer.DeliveryLocation.DoorNoAtEnd,
+                HouseDoorNo =
+                    x.Customer.HouseDoorNo,
 
-                ProductId = x.ProductId,
+                DoorNoAtEnd =
+                    x.Customer.DeliveryLocation.DoorNoAtEnd,
 
-                ProductCode = x.Product.ProductCode,
+                ProductId =
+                    x.ProductId,
 
-                ProductDisplayOrder = x.Product.DisplayOrder,
+                ProductCode =
+                    x.Product.ProductCode,
 
-                CategoryId = x.Product.CategoryId,
+                ProductDisplayOrder =
+                    x.Product.DisplayOrder,
 
-                Quantity = x.PlannedQty
+                CategoryId =
+                    x.Product.CategoryId,
+
+                Quantity =
+                    x.PlannedQty
             })
             .ToListAsync();
 
+
+        // ============================================
+        // Group:
+        //
+        // Delivery Order
+        //      ↓
+        // House
+        //      ↓
+        // Customer
+        //      ↓
+        // Products
+        // ============================================
+
         var result = data
+
+            // ========================================
+            // DELIVERY ORDER / LOCATION
+            // ========================================
 
             .GroupBy(x => new
             {
-                x.CustomerId,
-                x.CustomerName,
                 x.AreaCode,
-                x.DeliveryLocation,
-                x.DeliveryLocationAddress,
-                x.groupDeliverySheetByLocation,
-                x.DoorNoAtEnd,
+
                 x.DeliveryOrder,
-                x.HouseDoorNo
+
+                x.DeliveryLocation,
+
+                x.DeliveryLocationAddress,
+
+                x.GroupDeliverySheetByLocation
             })
 
             .OrderBy(x => x.Key.AreaCode)
-            .ThenBy(x => x.Key.DeliveryOrder)
-            .ThenBy(x => x.Key.HouseDoorNo)
 
-            .Select(customer => new DeliveryBoySheetDto
+            .ThenBy(x =>
+                x.Key.DeliveryOrder)
+
+            .Select(deliveryGroup => new DeliveryOrderDto
             {
-                CustomerId = customer.Key.CustomerId,
+                AreaCode =
+                    deliveryGroup.Key.AreaCode,
 
-                AreaCode = customer.Key.AreaCode,
+                DeliveryOrder =
+                    deliveryGroup.Key.DeliveryOrder,
 
-                CustomerName = customer.Key.CustomerName,
+                DeliveryLocation =
+                    deliveryGroup.Key.DeliveryLocation,
 
-                DeliveryLocation = customer.Key.DeliveryLocation,
+                DeliveryLocationAddress =
+                    deliveryGroup.Key.DeliveryLocationAddress,
 
-                GroupDeliverySheetByLocation = customer.Key.groupDeliverySheetByLocation,
+                GroupDeliverySheetByLocation =
+                    deliveryGroup.Key.GroupDeliverySheetByLocation,
 
-                Address = customer.Key.DoorNoAtEnd
-                ? string.Join(", ",
-                    new[]
+
+                // ====================================
+                // HOUSE
+                // ====================================
+
+                Houses = deliveryGroup
+
+                    .GroupBy(x => x.HouseDoorNo)
+
+                    .OrderBy(x => x.Key)
+
+                    .Select(houseGroup => new DeliveryHouseDto
                     {
-                        $"{customer.Key.DeliveryLocation} {customer.Key.HouseDoorNo}",
-                        customer.Key.DeliveryLocationAddress
-                    }
-                    .Where(x => !string.IsNullOrWhiteSpace(x)))
-                : string.Join(", ",
-                    new[]
-                    {
-                        customer.Key.HouseDoorNo,
-                        customer.Key.DeliveryLocation,
-                        customer.Key.DeliveryLocationAddress
-                    }        
-                    .Where(x => !string.IsNullOrWhiteSpace(x))),
+                        HouseDoorNo =
+                            houseGroup.Key,
 
-                MilkProducts = customer
 
-                    .Where(x => x.CategoryId == Constant.ProductCategory.Milk)
+                        // ============================
+                        // CUSTOMERS INSIDE HOUSE
+                        // ============================
 
-                    .GroupBy(x => new
-                    {
-                        x.ProductId,
-                        x.ProductCode,
-                        x.ProductDisplayOrder
+                        Customers = houseGroup
+
+                            .GroupBy(x => new
+                            {
+                                x.CustomerId,
+
+                                x.CustomerName,
+
+                                x.AreaCode,
+
+                                x.DeliveryLocation,
+
+                                x.DeliveryLocationAddress,
+
+                                x.GroupDeliverySheetByLocation,
+
+                                x.DoorNoAtEnd,
+
+                                x.HouseDoorNo,
+
+                                x.DeliveryNotes
+                            })
+
+                            .OrderBy(x =>
+                                x.Key.HouseDoorNo)
+
+                            .Select(customer =>
+                                new DeliveryBoySheetDto
+                                {
+                                    CustomerId =
+                                        customer.Key.CustomerId,
+
+                                    AreaCode =
+                                        customer.Key.AreaCode,
+
+                                    CustomerName =
+                                        customer.Key.CustomerName,
+
+                                    DeliveryLocation =
+                                        customer.Key.DeliveryLocation,
+
+                                    GroupDeliverySheetByLocation =
+                                        customer.Key
+                                            .GroupDeliverySheetByLocation,
+
+                                    DeliveryNotes = customer.Key.DeliveryNotes,
+
+                                    // ====================
+                                    // ADDRESS
+                                    // ====================
+
+                                    Address =
+                                        customer.Key.DoorNoAtEnd
+
+                                        ? string.Join(
+                                            ", ",
+                                            new[]
+                                            {
+                                            $"{customer.Key.DeliveryLocation} - {customer.Key.HouseDoorNo}",
+
+                                            customer.Key
+                                                .DeliveryLocationAddress
+                                            }
+                                            .Where(x =>
+                                                !string.IsNullOrWhiteSpace(x)))
+
+                                        : string.Join(
+                                            ", ",
+                                            new[]
+                                            {
+                                            customer.Key.HouseDoorNo,
+
+                                            customer.Key
+                                                .DeliveryLocation,
+
+                                            customer.Key
+                                                .DeliveryLocationAddress
+                                            }
+                                            .Where(x =>
+                                                !string.IsNullOrWhiteSpace(x))),
+
+
+                                    // ====================
+                                    // MILK PRODUCTS
+                                    // ====================
+
+                                    MilkProducts = customer
+
+                                        .Where(x =>
+                                            x.CategoryId ==
+                                            Constant
+                                                .ProductCategory
+                                                .Milk)
+
+                                        .GroupBy(x => new
+                                        {
+                                            x.ProductId,
+
+                                            x.ProductCode,
+
+                                            x.ProductDisplayOrder
+                                        })
+
+                                        .OrderBy(x =>
+                                            x.Key.ProductDisplayOrder
+                                            ?? int.MaxValue)
+
+                                        .ThenBy(x =>
+                                            x.Key.ProductCode)
+
+                                        .Select(product =>
+                                            new DeliveryBoyProductDto
+                                            {
+                                                ProductId =
+                                                    product.Key.ProductId,
+
+                                                ProductCode =
+                                                    product.Key.ProductCode,
+
+                                                Quantity =
+                                                    product.Sum(
+                                                        x => x.Quantity),
+
+                                                DisplayOrder =
+                                                    product.Key
+                                                        .ProductDisplayOrder
+                                            })
+
+                                        .ToList(),
+
+
+                                    // ====================
+                                    // OTHER PRODUCTS
+                                    // ====================
+
+                                    OtherProducts = customer
+
+                                        .Where(x =>
+                                            x.CategoryId !=
+                                            Constant
+                                                .ProductCategory
+                                                .Milk)
+
+                                        .GroupBy(x => new
+                                        {
+                                            x.ProductId,
+
+                                            x.ProductCode,
+
+                                            x.ProductDisplayOrder
+                                        })
+
+                                        .OrderBy(x =>
+                                            x.Key.ProductDisplayOrder
+                                            ?? int.MaxValue)
+
+                                        .ThenBy(x =>
+                                            x.Key.ProductCode)
+
+                                        .Select(product =>
+                                            new DeliveryBoyProductDto
+                                            {
+                                                ProductId =
+                                                    product.Key.ProductId,
+
+                                                ProductCode =
+                                                    product.Key.ProductCode,
+
+                                                Quantity =
+                                                    product.Sum(
+                                                        x => x.Quantity),
+
+                                                DisplayOrder =
+                                                    product.Key
+                                                        .ProductDisplayOrder
+                                            })
+
+                                        .ToList()
+                                })
+
+                            .ToList()
                     })
-
-                    .OrderBy(x => x.Key.ProductDisplayOrder ?? int.MaxValue)
-                    .ThenBy(x => x.Key.ProductCode)
-
-                    .Select(product => new DeliveryBoyProductDto
-                    {
-                        ProductId = product.Key.ProductId,
-
-                        ProductCode = product.Key.ProductCode,
-
-                        Quantity = product.Sum(x => x.Quantity),
-
-                        DisplayOrder = product.Key.ProductDisplayOrder
-                    })
-
-                    .ToList(),
-
-                OtherProducts = customer
-
-                    .Where(x => x.CategoryId != Constant.ProductCategory.Milk)
-
-                    .GroupBy(x => new
-                    {
-                        x.ProductId,
-                        x.ProductCode,
-                        x.ProductDisplayOrder
-                    })
-
-                    .OrderBy(x => x.Key.ProductDisplayOrder ?? int.MaxValue)
-                    .ThenBy(x => x.Key.ProductCode)
-
-                   .Select(product => new DeliveryBoyProductDto
-                   {
-                       ProductId = product.Key.ProductId,
-
-                       ProductCode = product.Key.ProductCode,
-
-                       Quantity = product.Sum(x => x.Quantity),
-
-                       DisplayOrder = product.Key.ProductDisplayOrder
-                   })
 
                     .ToList()
-
             })
 
             .ToList();
+
 
         return result;
     }
@@ -756,9 +942,19 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
     private static void BuildDeliveryBoyWorksheet(
      IXLWorksheet worksheet,
-     List<DeliveryBoySheetDto> customers,
+     List<DeliveryOrderDto> deliveryOrders,
      DateOnly deliveryDate)
     {
+        // ===========================
+        // Basic validation
+        // ===========================
+
+        if (deliveryOrders == null || !deliveryOrders.Any())
+        {
+            worksheet.Cell(1, 1).Value = "No delivery data available.";
+            return;
+        }
+
         // ===========================
         // Title
         // ===========================
@@ -769,6 +965,7 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
         worksheet.Cell(1, 1).Style.Font.Bold = true;
         worksheet.Cell(1, 1).Style.Font.FontSize = 16;
+
         worksheet.Cell(1, 1).Style.Alignment.Horizontal =
             XLAlignmentHorizontalValues.Center;
 
@@ -784,7 +981,7 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         worksheet.Cell(2, 4).Value = "Area";
 
         worksheet.Cell(2, 5).Value =
-            customers.First().AreaCode;
+            deliveryOrders.First().AreaCode;
 
         worksheet.Range(2, 1, 2, 5)
             .Style.Font.Bold = true;
@@ -794,19 +991,14 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         // ===========================
 
         worksheet.Cell(4, 1).Value = "Area";
-
         worksheet.Cell(4, 2).Value = "Customer";
-
         worksheet.Cell(4, 3).Value = "Address";
-
         worksheet.Cell(4, 4).Value = "Milk";
-
         worksheet.Cell(4, 5).Value = "Other Products";
 
         var header = worksheet.Range(4, 1, 4, 5);
 
         header.Style.Font.Bold = true;
-
         header.Style.Font.FontColor = XLColor.White;
 
         header.Style.Fill.BackgroundColor =
@@ -823,123 +1015,264 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         // ===========================
 
         var row = 5;
-        var locationGroups = customers
-    .GroupBy(x => x.DeliveryLocation)
-    .OrderBy(x => x.First().DeliveryLocation);
 
-        foreach (var location in locationGroups)
+        foreach (var deliveryOrder in deliveryOrders)
         {
-            // Location heading
-            //worksheet.Cell(row, 1).Value = location.Key;
-            //worksheet.Range(row, 1, row, 5).Merge();
-            //worksheet.Cell(row, 1).Style.Font.Bold = true;
-            //worksheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+           
 
-           // row++;
-            foreach (var customer in location)
+            // =====================================
+            // Houses inside Delivery Order
+            // =====================================
+
+            foreach (var house in deliveryOrder.Houses)
             {
-                worksheet.Cell(row, 1).Value =
-                    customer.AreaCode;
 
-                worksheet.Cell(row, 2).Value =
-                    customer.CustomerName;
+
+                // ---------------------------------
+                // Customers in this house
+                // ---------------------------------
+
+                foreach (var customer in house.Customers)
+                {
+                    worksheet.Cell(row, 1).Value =
+                        customer.AreaCode;
+
+                    worksheet.Cell(row, 2).Value =
+                        customer.CustomerName;
+
+                    // =============================
+                    // Address
+                    // =============================
+
+                    var addressCell = worksheet.Cell(row, 3);
+
+                    addressCell.Value = customer.Address;
+
+                    addressCell.Style.Alignment.WrapText = true;
+
+                    addressCell.Style.Alignment.Vertical =
+                        XLAlignmentVerticalValues.Top;
+
+                    // =============================
+                    // Milk Products
+                    // =============================
+
+                    worksheet.Cell(row, 4).Value =
+                        string.Join(
+                            Environment.NewLine,
+                            customer.MilkProducts
+                                .Select(x =>
+                                    $"{FormatQuantity(x.Quantity)} {x.ProductCode}")
+                        );
+
+                    // =============================
+                    // Other Products
+                    // =============================
+
+                    var otherProductLines =
+      customer.OtherProducts
+          .Select(x =>
+              $"{FormatQuantity(x.Quantity)} {x.ProductCode}")
+          .ToList();
+
+                    if (!string.IsNullOrWhiteSpace(
+                            customer.DeliveryNotes))
+                    {
+                        otherProductLines.Add(
+                            customer.DeliveryNotes);
+                    }
+
+                    worksheet.Cell(row, 5).Value =
+                        string.Join(
+                            Environment.NewLine,
+                            otherProductLines);
+
+                    // =============================
+                    // Row formatting
+                    // =============================
+
+                    var currentRow = worksheet.Row(row);
+
+                    currentRow.Style.Alignment.WrapText = true;
+
+                    currentRow.Style.Alignment.Vertical =
+                        XLAlignmentVerticalValues.Top;
+
+                    // =============================
+                    // Set row height
+                    // =============================
+
+                    var addressLength =
+                        customer.Address?.Length ?? 0;
+
+                    var estimatedLines =
+                        Math.Max(
+                            1,
+                            (int)Math.Ceiling(addressLength / 55.0)
+                        );
+
+                    var productLines =
+                        Math.Max(
+                            customer.MilkProducts.Count,
+                            customer.OtherProducts.Count
+                        );
+
+                    var requiredLines =
+                        Math.Max(
+                            estimatedLines,
+                            productLines
+                        );
+
+                    currentRow.Height =
+      Math.Min(
+          Math.Max(
+              requiredLines * 20,
+              40),
+          150);
+
+                    // =============================
+                    // Highlight other products
+                    // =============================
+
+                    if (customer.OtherProducts.Any())
+                    {
+                        worksheet.Range(row, 1, row, 5)
+                            .Style.Fill.BackgroundColor =
+                                XLColor.Yellow;
+                    }
+
+                    row++;
+                }
+            }
+
+            // ---------------------------------
+            // Blank row between houses
+            // ---------------------------------
+
+            row++;
+
+            // =====================================
+            // Delivery Order Summary
+            // =====================================
+
+            if (deliveryOrder.GroupDeliverySheetByLocation)
+            {
+                var locationCustomers =
+                    deliveryOrder.Houses
+                        .SelectMany(x => x.Customers)
+                        .ToList();
+
+                var locationSummary =
+                    locationCustomers
+                        .SelectMany(x =>
+                            x.MilkProducts
+                                .Concat(x.OtherProducts))
+                        .GroupBy(x => new
+                        {
+                            x.ProductCode,
+                            x.DisplayOrder
+                        })
+                        .OrderBy(x =>
+                            x.Key.DisplayOrder ?? int.MaxValue)
+                        .ThenBy(x =>
+                            x.Key.ProductCode)
+                        .Select(x =>
+                            $"{FormatQuantity(
+                                x.Sum(p => p.Quantity))} {x.Key.ProductCode}");
 
                 worksheet.Cell(row, 3).Value =
-                    customer.Address;
+                    "Delivery Total";
 
                 worksheet.Cell(row, 4).Value =
-                    string.Join(
-                        Environment.NewLine,
-                        customer.MilkProducts.Select(x =>
-                           $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
+                    string.Join(", ", locationSummary);
 
-                worksheet.Cell(row, 5).Value =
-                    string.Join(
-                        Environment.NewLine,
-                        customer.OtherProducts.Select(x =>
-                            $"{FormatQuantity(x.Quantity)} {x.ProductCode}"));
+                var summaryRange =
+                    worksheet.Range(row, 1, row, 5);
 
-                worksheet.Row(row)
-                    .Style.Alignment.WrapText = true;
+                summaryRange.Style.Fill.BackgroundColor =
+                    XLColor.Yellow;
 
-                worksheet.Row(row)
-                    .Style.Alignment.Vertical =
-                    XLAlignmentVerticalValues.Top;
+                summaryRange.Style.Font.Bold = true;
 
-                if (customer.OtherProducts.Any())
-                {
-                    worksheet.Range(row, 1, row, 5)
-                        .Style.Fill.BackgroundColor =
-                        XLColor.Yellow;
-                }
+                summaryRange.Style.Alignment.Horizontal =
+                    XLAlignmentHorizontalValues.Center;
+
+                summaryRange.Style.Alignment.Vertical =
+                    XLAlignmentVerticalValues.Center;
 
                 row++;
-            }
-            if (location.First().GroupDeliverySheetByLocation)
-            {
-                var locationSummary = location
-     .SelectMany(x => x.MilkProducts.Concat(x.OtherProducts))
-     .GroupBy(x => new
-     {
-         x.ProductCode,
-         x.DisplayOrder
-     })
-     .OrderBy(x => x.Key.DisplayOrder ?? int.MaxValue)
-     .ThenBy(x => x.Key.ProductCode)
-     .Select(x => $"{FormatQuantity(x.Sum(p => p.Quantity))} {x.Key.ProductCode}");
 
-                worksheet.Cell(row, 4).Value = string.Join(", ", locationSummary);
-
-                // Highlight the entire summary row
-                var summaryRange = worksheet.Range(row, 1, row, 5);
-
-                summaryRange.Style.Fill.BackgroundColor = XLColor.Yellow;
-                summaryRange.Style.Font.Bold = true;
-                summaryRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                summaryRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-
-                row++;      // Move to next row
-                row++;      // Blank row between locations
+                // Blank row between delivery orders
+                row++;
             }
         }
-            // ===========================
+
+        // ===========================
         // Loading Summary
         // ===========================
 
-        row += 2;
+        row += 1;
 
-        worksheet.Cell(row, 1).Value = "Loading Summary";
+        worksheet.Cell(row, 1).Value =
+            "Loading Summary";
 
         worksheet.Range(row, 1, row, 2).Merge();
 
         worksheet.Cell(row, 1).Style.Font.Bold = true;
+
         worksheet.Cell(row, 1).Style.Font.FontSize = 13;
 
         row++;
 
-        worksheet.Cell(row, 1).Value = "Product";
-        worksheet.Cell(row, 2).Value = "Quantity";
+        worksheet.Cell(row, 1).Value =
+            "Product";
 
-        var summaryHeader = worksheet.Range(row, 1, row, 2);
+        worksheet.Cell(row, 2).Value =
+            "Quantity";
+
+        var summaryHeader =
+            worksheet.Range(row, 1, row, 2);
 
         summaryHeader.Style.Font.Bold = true;
-        summaryHeader.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+        summaryHeader.Style.Fill.BackgroundColor =
+            XLColor.LightGray;
 
         row++;
 
-        var summary = customers
+        // =====================================
+        // Flatten:
+        //
+        // DeliveryOrder
+        //     -> Houses
+        //         -> Customers
+        //             -> Products
+        // =====================================
 
-            .SelectMany(x => x.MilkProducts.Concat(x.OtherProducts))
+        var allCustomers =
+            deliveryOrders
+                .SelectMany(x => x.Houses)
+                .SelectMany(x => x.Customers)
+                .ToList();
 
-            .GroupBy(x => new
-            {
-                x.ProductCode,
-                x.DisplayOrder
-            })
+        var summary =
+            allCustomers
 
-            .OrderBy(x => x.Key.DisplayOrder ?? int.MaxValue)
+                .SelectMany(x =>
+                    x.MilkProducts
+                        .Concat(x.OtherProducts))
 
-            .ThenBy(x => x.Key.ProductCode);
+                .GroupBy(x => new
+                {
+                    x.ProductCode,
+                    x.DisplayOrder
+                })
+
+                .OrderBy(x =>
+                    x.Key.DisplayOrder ?? int.MaxValue)
+
+                .ThenBy(x =>
+                    x.Key.ProductCode);
 
         foreach (var product in summary)
         {
@@ -947,7 +1280,8 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                 product.Key.ProductCode;
 
             worksheet.Cell(row, 2).Value =
-                FormatQuantity(product.Sum(x => x.Quantity));
+                FormatQuantity(
+                    product.Sum(x => x.Quantity));
 
             row++;
         }
@@ -956,11 +1290,12 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         // Borders
         // ===========================
 
-        var customerTable = worksheet.Range(
-            4,
-            1,
-            customers.Count + 4,
-            5);
+        var customerTable =
+            worksheet.Range(
+                4,
+                1,
+                row - 1,
+                5);
 
         customerTable.Style.Border.OutsideBorder =
             XLBorderStyleValues.Thin;
@@ -968,23 +1303,47 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         customerTable.Style.Border.InsideBorder =
             XLBorderStyleValues.Thin;
 
-        var summaryTable = worksheet.Range(
-            customers.Count + 7,
-            1,
-            row - 1,
-            2);
+        // ===========================
+        // Summary Borders
+        // ===========================
 
-        summaryTable.Style.Border.OutsideBorder =
-            XLBorderStyleValues.Thin;
+        // Find Loading Summary row
+        var loadingSummaryCell =
+            worksheet.CellsUsed()
+                .FirstOrDefault(x =>
+                    x.Value.ToString() == "Loading Summary");
 
-        summaryTable.Style.Border.InsideBorder =
-            XLBorderStyleValues.Thin;
+        if (loadingSummaryCell != null)
+        {
+            var summaryStartRow =
+                loadingSummaryCell.Address.RowNumber;
+
+            var summaryTable =
+                worksheet.Range(
+                    summaryStartRow,
+                    1,
+                    row - 1,
+                    2);
+
+            summaryTable.Style.Border.OutsideBorder =
+                XLBorderStyleValues.Thin;
+
+            summaryTable.Style.Border.InsideBorder =
+                XLBorderStyleValues.Thin;
+        }
 
         // ===========================
         // Auto Filter
         // ===========================
 
-        customerTable.SetAutoFilter();
+        // Filtering is useful only for
+        // actual customer header/data rows.
+        worksheet.Range(
+            4,
+            1,
+            row - 1,
+            5)
+            .SetAutoFilter();
 
         // ===========================
         // Freeze Header
@@ -1002,7 +1361,7 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
         worksheet.Column(2).Width = 25;
 
-        worksheet.Column(3).Width = 45;
+        worksheet.Column(3).Width = 60;
 
         worksheet.Column(4).Width = 18;
 
@@ -1021,13 +1380,351 @@ public class DeliveryPlanningService : IDeliveryPlanningService
         worksheet.Style.Alignment.Vertical =
             XLAlignmentVerticalValues.Center;
 
-        worksheet.Style.Font.FontName = "Calibri";
+        worksheet.Style.Font.FontName =
+            "Calibri";
 
-        worksheet.Style.Font.FontSize = 12;
-    }   
+        worksheet.Style.Font.FontSize =
+            12;
+    }
 
     private static string FormatQuantity(decimal quantity)
     {
         return quantity.ToString("0.##");
+    }
+
+    public async Task<List<ExpectedDeliveryDto>> GetExpectedDeliveriesAsync(
+     DateOnly deliveryDate,
+     string source,
+     long productId)
+    {
+        // ============================================================
+        // Load active subscriptions
+        // ============================================================
+
+        var subscriptions = await _context.CustomerSubscriptions
+            .Include(x => x.Schedules)
+            .Include(x => x.Product)
+            .Include(x => x.Customer)
+                .ThenInclude(c => c.Area)
+            .Where(x =>
+                x.IsActive &&
+                x.Product.IsActive &&
+                x.Customer.Area.IsActive &&
+                x.StartDate <= deliveryDate &&
+                (x.EndDate == null ||
+                 x.EndDate >= deliveryDate))
+            .ToListAsync();
+
+
+        // ============================================================
+        // Load active customer requests applicable for this date
+        // ============================================================
+
+        var customerRequests = await _context.CustomerRequests
+            .Include(x => x.Product)
+            .Include(x => x.Customer)
+                .ThenInclude(c => c.Area)
+            .AsNoTracking()
+            .Where(x =>
+                x.Status != CustomerRequestStatus.Cancelled &&
+                x.IsActive &&
+                x.Customer.Area.IsActive &&
+                x.Product.IsActive &&
+                x.EffectiveFrom <= deliveryDate &&
+                (x.EffectiveTo == null ||
+                 x.EffectiveTo >= deliveryDate))
+            .ToListAsync();
+
+
+        var result = new List<ExpectedDeliveryDto>();
+
+
+        // ============================================================
+        // SUBSCRIPTION
+        // ============================================================
+
+        if (source.Equals(
+     "subscription",
+     StringComparison.OrdinalIgnoreCase) ||
+     source.Equals(
+         "all",
+         StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var subscription in subscriptions)
+            {
+                // ----------------------------------------------------
+                // Extra safety checks
+                // ----------------------------------------------------
+
+                if (!subscription.Customer.Area.IsActive)
+                    continue;
+
+                if (!subscription.Product.IsActive)
+                    continue;
+
+
+                // ----------------------------------------------------
+                // Find Pause request
+                // ----------------------------------------------------
+
+                var pauseRequest = customerRequests.FirstOrDefault(x =>
+                    x.SubscriptionId == subscription.Id &&
+                    x.RequestAction == CustomerRequestAction.Pause);
+
+
+                // ----------------------------------------------------
+                // If paused, don't show this customer
+                // ----------------------------------------------------
+
+                if (pauseRequest != null)
+                    continue;
+
+
+                // ----------------------------------------------------
+                // Find Replace request
+                //
+                // Replace is your override.
+                // If Replace exists, it becomes the final delivery.
+                // ----------------------------------------------------
+
+                var replaceRequest = customerRequests.FirstOrDefault(x =>
+                    x.SubscriptionId == subscription.Id &&
+                    x.RequestAction == CustomerRequestAction.Replace);
+
+
+                // ----------------------------------------------------
+                // If Replace exists
+                // ----------------------------------------------------
+
+                if (replaceRequest != null)
+                {
+                    // Make sure replacement product exists
+                    if (!replaceRequest.ProductId.HasValue)
+                        continue;
+
+                    if (replaceRequest.Product == null)
+                        continue;
+
+                    if (!replaceRequest.Product.IsActive)
+                        continue;
+
+
+                    // ------------------------------------------------
+                    // Product filter
+                    //
+                    // User selected a product in the UI.
+                    // Only show replacement if it matches.
+                    // ------------------------------------------------
+
+                    if (replaceRequest.ProductId.Value != productId)
+                        continue;
+
+
+                    // ------------------------------------------------
+                    // Quantity
+                    //
+                    // Replace quantity is the final quantity.
+                    // If quantity is null, fallback to subscription
+                    // quantity.
+                    // ------------------------------------------------
+
+                    decimal subscriptionQuantity = GetQuantity(
+                        subscription,
+                        deliveryDate);
+
+                    decimal finalQuantity =
+                        replaceRequest.Quantity ??
+                        subscriptionQuantity;
+
+
+                    // ------------------------------------------------
+                    // Add ONLY replacement
+                    //
+                    // IMPORTANT:
+                    // We use continue so the normal subscription
+                    // record is NOT added.
+                    // ------------------------------------------------
+
+                    result.Add(new ExpectedDeliveryDto
+                    {
+                        CustomerId =
+                            subscription.CustomerId,
+
+                        CustomerName =
+                            subscription.Customer.CustomerName,
+
+                        SubscriptionId =
+                            subscription.Id,
+
+                        ProductId =
+                            replaceRequest.ProductId.Value,
+
+                        ProductCode =
+                            replaceRequest.Product.ProductCode,
+
+                        ProductName =
+                            replaceRequest.Product.ProductName,
+
+                        Quantity =
+                            finalQuantity,
+
+                        Source = "Replace",
+
+                        RequestId =
+                            replaceRequest.Id
+                    });
+
+                    continue;
+                }
+
+
+                // ----------------------------------------------------
+                // No Replace request
+                //
+                // Therefore normal subscription delivery applies.
+                // ----------------------------------------------------
+
+                // Check whether selected product matches
+                // subscription product.
+
+                if (subscription.ProductId != productId)
+                    continue;
+
+
+                // ----------------------------------------------------
+                // Check subscription schedule
+                // ----------------------------------------------------
+
+                if (!IsDeliveryApplicable(
+                    subscription,
+                    deliveryDate))
+                {
+                    continue;
+                }
+
+
+                // ----------------------------------------------------
+                // Get normal subscription quantity
+                // ----------------------------------------------------
+
+                decimal quantity = GetQuantity(
+                    subscription,
+                    deliveryDate);
+
+
+                // ----------------------------------------------------
+                // Add normal subscription delivery
+                // ----------------------------------------------------
+
+                result.Add(new ExpectedDeliveryDto
+                {
+                    CustomerId =
+                        subscription.CustomerId,
+
+                    CustomerName =
+                        subscription.Customer.CustomerName,
+
+                    SubscriptionId =
+                        subscription.Id,
+
+                    ProductId =
+                        subscription.ProductId,
+
+                    ProductCode =
+                        subscription.Product.ProductCode,
+
+                    ProductName =
+                        subscription.Product.ProductName,
+
+                    Quantity =
+                        quantity,
+
+                    Source = "Subscription",
+
+                    RequestId = null
+                });
+            }
+        }
+
+
+        // ============================================================
+        // REQUEST / ADD
+        // ============================================================
+
+        if (source.Equals(
+     "request",
+     StringComparison.OrdinalIgnoreCase) ||
+     source.Equals(
+         "all",
+         StringComparison.OrdinalIgnoreCase))
+        {
+            var addRequests = customerRequests
+                .Where(x =>
+                    x.RequestAction ==
+                        CustomerRequestAction.Add &&
+                    x.SubscriptionId == null &&
+                    x.ProductId.HasValue &&
+                    x.ProductId.Value == productId)
+                .ToList();
+
+
+            foreach (var addRequest in addRequests)
+            {
+                // ----------------------------------------------------
+                // Safety checks
+                // ----------------------------------------------------
+
+                if (!addRequest.Customer.Area.IsActive)
+                    continue;
+
+                if (addRequest.Product == null)
+                    continue;
+
+                if (!addRequest.Product.IsActive)
+                    continue;
+
+
+                // ----------------------------------------------------
+                // Add request
+                // ----------------------------------------------------
+
+                result.Add(new ExpectedDeliveryDto
+                {
+                    CustomerId =
+                        addRequest.CustomerId,
+
+                    CustomerName =
+                        addRequest.Customer.CustomerName,
+
+                    SubscriptionId = null,
+
+                    ProductId =
+                        addRequest.ProductId!.Value,
+
+                    ProductCode =
+                        addRequest.Product.ProductCode,
+
+                    ProductName =
+                        addRequest.Product.ProductName,
+
+                    Quantity =
+                        addRequest.Quantity ?? 1,
+
+                    Source = "Request",
+
+                    RequestId =
+                        addRequest.Id
+                });
+            }
+        }
+
+
+        // ============================================================
+        // Return sorted result
+        // ============================================================
+
+        return result
+            .OrderBy(x => x.CustomerName)
+            .ToList();
     }
 }

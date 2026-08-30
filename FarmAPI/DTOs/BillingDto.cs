@@ -1,4 +1,6 @@
-﻿namespace FarmAPI.DTOs
+﻿using DocumentFormat.OpenXml.Office.CoverPageProps;
+
+namespace FarmAPI.DTOs
 {
     public class BillingDto
     {
@@ -89,6 +91,8 @@
 
             public DateTime AdjustmentDate { get; set; }
 
+            public string AdjustmentType { get; set; }
+
             public decimal Amount { get; set; }
 
             public string Reason { get; set; } = string.Empty;
@@ -147,7 +151,7 @@
 
         public class PaymentDto
         {
-            public DateTime PaymentDate { get; set; }
+            public DateOnly PaymentDate { get; set; }
 
             public decimal Amount { get; set; }
 
@@ -158,7 +162,7 @@
 
         public class AdjustmentDto
         {
-            public DateTime AdjustmentDate { get; set; }
+            public DateOnly AdjustmentDate { get; set; }
 
             public decimal Amount { get; set; }
 
@@ -182,6 +186,7 @@
         {
             public string FarmName { get; set; } = string.Empty;
 
+            public string FarmQuote { get; set; } = string.Empty;
             public string MobileNo { get; set; } = string.Empty;
 
             public string BankName { get; set; } = string.Empty;
@@ -229,11 +234,15 @@
 
         public class SummaryBillItemDto
         {
+            public long DisplayOrder { get; set; }
+
+            public decimal? LitresPerUnit { get; set; }
+            
             public string ProductName { get; set; } = string.Empty;
 
             public decimal Quantity { get; set; }
 
-            public decimal UnitPrice { get; set; }
+            public decimal? UnitPrice { get; set; }
 
             public decimal Amount { get; set; }
 

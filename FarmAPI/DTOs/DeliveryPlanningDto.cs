@@ -72,20 +72,43 @@
             public decimal Quantity { get; set; }
         }
 
+        public class DeliveryOrderDto
+        {
+            public string AreaCode { get; set; }
+
+            public int? DeliveryOrder { get; set; }
+
+            public string DeliveryLocation { get; set; }
+
+            public string DeliveryLocationAddress { get; set; }
+
+            public bool GroupDeliverySheetByLocation { get; set; }
+
+            public List<DeliveryHouseDto> Houses { get; set; } = new();
+        }
+
+        public class DeliveryHouseDto
+        {
+            public string HouseDoorNo { get; set; }
+
+            public List<DeliveryBoySheetDto> Customers { get; set; } = new();
+        }
+
         public class DeliveryBoySheetDto
         {
             public long CustomerId { get; set; }
 
-            public string AreaCode { get; set; } = string.Empty;
+            public string AreaCode { get; set; }
 
-            public string CustomerName { get; set; } = string.Empty;
+            public string CustomerName { get; set; }
 
-            public string Address { get; set; } = string.Empty;
-
-            public string DeliveryLocation { get; set; } = string.Empty;
+            public string DeliveryLocation { get; set; }
 
             public bool GroupDeliverySheetByLocation { get; set; }
 
+            public string Address { get; set; }
+
+            public string? DeliveryNotes { get; set; }
             public List<DeliveryBoyProductDto> MilkProducts { get; set; } = new();
 
             public List<DeliveryBoyProductDto> OtherProducts { get; set; } = new();
@@ -95,11 +118,32 @@
         {
             public long ProductId { get; set; }
 
-            public string ProductCode { get; set; } = string.Empty;            
+            public string ProductCode { get; set; }
 
             public decimal Quantity { get; set; }
 
             public int? DisplayOrder { get; set; }
+        }
+
+        public class ExpectedDeliveryDto
+        {
+            public long CustomerId { get; set; }
+
+            public string CustomerName { get; set; } = string.Empty;
+
+            public long? SubscriptionId { get; set; }
+
+            public long ProductId { get; set; }
+
+            public string ProductCode { get; set; } = string.Empty;
+
+            public string ProductName { get; set; } = string.Empty;
+
+            public decimal Quantity { get; set; }
+
+            public string Source { get; set; } = string.Empty;
+
+            public long? RequestId { get; set; }
         }
     }
 }
