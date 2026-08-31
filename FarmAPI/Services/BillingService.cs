@@ -182,9 +182,9 @@ namespace FarmAPI.Services
                 CustomerCount = billingItems.Count,
 
                 TotalBill = billingItems.Sum(x =>
-                    x.ProductAmount +
-                    x.DeliveryCharge +
-                    x.AdjustmentAmount),
+    x.ProductAmount +
+    x.DeliveryCharge -
+    x.AdjustmentAmount),
 
                 TotalCollected = billingItems.Sum(x =>
                     x.PaidAmount),
