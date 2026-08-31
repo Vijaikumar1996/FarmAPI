@@ -488,7 +488,7 @@ namespace FarmAPI.Services
                 .Where(x =>
                     x.CustomerId == customerId &&
                     x.BillingMonth == billingMonth &&
-                    x.Status == CustomerDeliveryStatus.Delivered)
+                    x.DeliveredQty > 0)
                 .OrderBy(x => x.DeliveryDate)
                 .Select(x => new DeliveryDto
                 {
