@@ -1,4 +1,6 @@
 ﻿using ClosedXML.Excel;
+using System.Text.RegularExpressions;
+using DocumentFormat.OpenXml.InkML;
 using FarmAPI.Data;
 using FarmAPI.Entities;
 using FarmAPI.Interface;
@@ -7,6 +9,7 @@ using FarmManagement.Entities;
 using FarmManagement.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
+using System.Text.RegularExpressions;
 using static FarmAPI.DTOs.DeliveryPlanningDto;
 using static FarmAPI.Utils.Constant;
 
@@ -506,12 +509,17 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             {
                 AreaId = x.Customer.AreaId,
                 AreaCode = x.Customer.Area.AreaCode,
-                AreaName = x.Customer.Area.AreaName,               
+                AreaName = x.Customer.Area.AreaName,
+                AreaDisplayOrder = x.Customer.Area.DisplayOrder,
 
                 ProductId = x.ProductId,
                 ProductCode = x.Product.ProductCode,
                 ProductName = x.Product.ProductName,
                 ProductDisplayOrder = x.Product.DisplayOrder,
+
+                CategoryId = x.Product.CategoryId,
+                CategoryName = x.Product.Category.CategoryName,
+
                 LitresPerUnit = x.Product.LitresPerUnit,
 
                 Quantity = x.PlannedQty
@@ -519,16 +527,17 @@ public class DeliveryPlanningService : IDeliveryPlanningService
             .ToListAsync();
 
         var result = data
-
             .GroupBy(x => new
             {
                 x.AreaId,
                 x.AreaCode,
-                x.AreaName,                
+                x.AreaName,
+                x.AreaDisplayOrder
             })
 
-            .OrderBy(x => x.Key.AreaName)
-            
+            // Area order
+            .OrderBy(x => x.Key.AreaDisplayOrder)
+            .ThenBy(x => x.Key.AreaName)
 
             .Select(area => new DriverLoadingDto
             {
@@ -538,19 +547,24 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
                 AreaName = area.Key.AreaName,
 
-                Products = area
+                // Total litres for this area
+                TotalLitres = area.Sum(x =>
+                    x.Quantity * (x.LitresPerUnit ?? 0m)),
 
+                Products = area
                     .GroupBy(x => new
                     {
                         x.ProductId,
                         x.ProductCode,
                         x.ProductName,
                         x.ProductDisplayOrder,
+                        x.CategoryId,
+                        x.CategoryName,
                         x.LitresPerUnit
                     })
 
+                    // Product display order
                     .OrderBy(x => x.Key.ProductDisplayOrder ?? int.MaxValue)
-                    .ThenBy(x => x.Key.ProductCode)
 
                     .Select(product => new DriverLoadingItemDto
                     {
@@ -560,14 +574,16 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
                         ProductName = product.Key.ProductName,
 
+                        CategoryId = product.Key.CategoryId,
+
+                        CategoryName = product.Key.CategoryName,
+
                         Quantity = product.Sum(x => x.Quantity),
-                       
                     })
 
                     .Where(x => x.Quantity > 0)
 
                     .ToList()
-
             })
 
             .Where(x => x.Products.Any())
@@ -578,207 +594,219 @@ public class DeliveryPlanningService : IDeliveryPlanningService
     }
 
 
+
+
+
     public async Task<List<DeliveryOrderDto>> GetDeliveryBoySheetAsync(
-      DateOnly deliveryDate,
-      long? areaId = null)
+    DateOnly deliveryDate,
+    long? areaId = null)
+{
+    // ============================================
+    // Load delivery details
+    // ============================================
+
+    var query = _context.DeliveryDetails
+        .AsNoTracking()
+        .Where(x => x.DeliveryDate == deliveryDate);
+
+    if (areaId.HasValue)
     {
-        // ============================================
-        // Load delivery details
-        // ============================================
+        query = query.Where(
+            x => x.Customer.AreaId == areaId.Value);
+    }
 
-        var query = _context.DeliveryDetails
-            .AsNoTracking()
-            .Where(x => x.DeliveryDate == deliveryDate);
-
-        if (areaId.HasValue)
+    var data = await query
+        .Select(x => new
         {
-            query = query.Where(
-                x => x.Customer.AreaId == areaId.Value);
-        }
+            CustomerId = x.CustomerId,
 
-        var data = await query
-            .Select(x => new
-            {
-                CustomerId = x.CustomerId,
+            CustomerName = x.Customer.CustomerName,
 
-                CustomerName = x.Customer.CustomerName,
+            AreaCode = x.Customer.Area.AreaCode,
 
-                AreaCode = x.Customer.Area.AreaCode,
+            GroupDeliverySheetByLocation =
+                x.Customer.Area.GroupDeliverySheetByLocation,
 
-                GroupDeliverySheetByLocation =
-                    x.Customer.Area.GroupDeliverySheetByLocation,
+            DeliveryLocation =
+                x.Customer.DeliveryLocation.LocationName,
 
-                DeliveryLocation =
-                    x.Customer.DeliveryLocation.LocationName,
+            DeliveryLocationAddress =
+                x.Customer.DeliveryLocation.Address,
 
-                DeliveryLocationAddress =
-                    x.Customer.DeliveryLocation.Address,
+            DeliveryNotes =
+                x.Customer.DeliveryNotes,
 
-                DeliveryNotes = x.Customer.DeliveryNotes,
+            DeliveryOrder =
+                x.Customer.DeliveryLocation.DeliveryOrder,
 
-                DeliveryOrder =
-                    x.Customer.DeliveryLocation.DeliveryOrder,
+            HouseDoorNo =
+                x.Customer.HouseDoorNo,
 
-                HouseDoorNo =
-                    x.Customer.HouseDoorNo,
+            DoorNoAtEnd =
+                x.Customer.DeliveryLocation.DoorNoAtEnd,
 
-                DoorNoAtEnd =
-                    x.Customer.DeliveryLocation.DoorNoAtEnd,
+            ProductId =
+                x.ProductId,
 
-                ProductId =
-                    x.ProductId,
+            ProductCode =
+                x.Product.ProductCode,
 
-                ProductCode =
-                    x.Product.ProductCode,
+            ProductDisplayOrder =
+                x.Product.DisplayOrder,
 
-                ProductDisplayOrder =
-                    x.Product.DisplayOrder,
+            CategoryId =
+                x.Product.CategoryId,
 
-                CategoryId =
-                    x.Product.CategoryId,
-
-                Quantity =
-                    x.PlannedQty
-            })
-            .ToListAsync();
+            Quantity =
+                x.PlannedQty
+        })
+        .ToListAsync();
 
 
-        // ============================================
-        // Group:
-        //
-        // Delivery Order
-        //      ↓
-        // House
-        //      ↓
-        // Customer
-        //      ↓
-        // Products
-        // ============================================
+    // ============================================
+    // Group:
+    //
+    // Delivery Order
+    //      ↓
+    // House
+    //      ↓
+    // Customer
+    //      ↓
+    // Products
+    // ============================================
 
-        var result = data
+    var result = data
 
-            // ========================================
-            // DELIVERY ORDER / LOCATION
-            // ========================================
+        // ========================================
+        // DELIVERY ORDER / LOCATION
+        // ========================================
 
-            .GroupBy(x => new
-            {
-                x.AreaCode,
+        .GroupBy(x => new
+        {
+            x.AreaCode,
 
-                x.DeliveryOrder,
+            x.DeliveryOrder,
 
-                x.DeliveryLocation,
+            x.DeliveryLocation,
 
-                x.DeliveryLocationAddress,
+            x.DeliveryLocationAddress,
 
-                x.GroupDeliverySheetByLocation
-            })
+            x.GroupDeliverySheetByLocation
+        })
 
-            .OrderBy(x => x.Key.AreaCode)
+        .OrderBy(x => x.Key.AreaCode)
 
-            .ThenBy(x =>
-                x.Key.DeliveryOrder)
+        .ThenBy(x =>
+            x.Key.DeliveryOrder)
 
-            .Select(deliveryGroup => new DeliveryOrderDto
-            {
-                AreaCode =
-                    deliveryGroup.Key.AreaCode,
+        .Select(deliveryGroup => new DeliveryOrderDto
+        {
+            AreaCode =
+                deliveryGroup.Key.AreaCode,
 
-                DeliveryOrder =
-                    deliveryGroup.Key.DeliveryOrder,
+            DeliveryOrder =
+                deliveryGroup.Key.DeliveryOrder,
 
-                DeliveryLocation =
-                    deliveryGroup.Key.DeliveryLocation,
+            DeliveryLocation =
+                deliveryGroup.Key.DeliveryLocation,
 
-                DeliveryLocationAddress =
-                    deliveryGroup.Key.DeliveryLocationAddress,
+            DeliveryLocationAddress =
+                deliveryGroup.Key.DeliveryLocationAddress,
 
-                GroupDeliverySheetByLocation =
-                    deliveryGroup.Key.GroupDeliverySheetByLocation,
+            GroupDeliverySheetByLocation =
+                deliveryGroup.Key.GroupDeliverySheetByLocation,
 
+
+            // ====================================
+            // HOUSE
+            // ====================================
+
+            Houses = deliveryGroup
+
+                .GroupBy(x => x.HouseDoorNo)
 
                 // ====================================
-                // HOUSE
+                // NATURAL HOUSE / DOOR SORTING
                 // ====================================
 
-                Houses = deliveryGroup
+                .OrderBy(x =>
+                    GetHouseSortKey(x.Key))
 
-                    .GroupBy(x => x.HouseDoorNo)
-
-                    .OrderBy(x => x.Key)
-
-                    .Select(houseGroup => new DeliveryHouseDto
-                    {
-                        HouseDoorNo =
-                            houseGroup.Key,
+                .Select(houseGroup => new DeliveryHouseDto
+                {
+                    HouseDoorNo =
+                        houseGroup.Key,
 
 
-                        // ============================
-                        // CUSTOMERS INSIDE HOUSE
-                        // ============================
+                    // ============================
+                    // CUSTOMERS INSIDE HOUSE
+                    // ============================
 
-                        Customers = houseGroup
+                    Customers = houseGroup
 
-                            .GroupBy(x => new
+                        .GroupBy(x => new
+                        {
+                            x.CustomerId,
+
+                            x.CustomerName,
+
+                            x.AreaCode,
+
+                            x.DeliveryLocation,
+
+                            x.DeliveryLocationAddress,
+
+                            x.GroupDeliverySheetByLocation,
+
+                            x.DoorNoAtEnd,
+
+                            x.HouseDoorNo,
+
+                            x.DeliveryNotes
+                        })
+
+                        .OrderBy(x =>
+                            GetHouseSortKey(
+                                x.Key.HouseDoorNo))
+
+                        .Select(customer =>
+                            new DeliveryBoySheetDto
                             {
-                                x.CustomerId,
+                                CustomerId =
+                                    customer.Key.CustomerId,
 
-                                x.CustomerName,
+                                AreaCode =
+                                    customer.Key.AreaCode,
 
-                                x.AreaCode,
+                                CustomerName =
+                                    customer.Key.CustomerName,
 
-                                x.DeliveryLocation,
+                                DeliveryLocation =
+                                    customer.Key.DeliveryLocation,
 
-                                x.DeliveryLocationAddress,
+                                GroupDeliverySheetByLocation =
+                                    customer.Key
+                                        .GroupDeliverySheetByLocation,
 
-                                x.GroupDeliverySheetByLocation,
+                                DeliveryNotes =
+                                    customer.Key.DeliveryNotes,
 
-                                x.DoorNoAtEnd,
 
-                                x.HouseDoorNo,
+                                // ====================
+                                // ADDRESS
+                                // ====================
 
-                                x.DeliveryNotes
-                            })
-
-                            .OrderBy(x =>
-                                x.Key.HouseDoorNo)
-
-                            .Select(customer =>
-                                new DeliveryBoySheetDto
-                                {
-                                    CustomerId =
-                                        customer.Key.CustomerId,
-
-                                    AreaCode =
-                                        customer.Key.AreaCode,
-
-                                    CustomerName =
-                                        customer.Key.CustomerName,
-
-                                    DeliveryLocation =
-                                        customer.Key.DeliveryLocation,
-
-                                    GroupDeliverySheetByLocation =
-                                        customer.Key
-                                            .GroupDeliverySheetByLocation,
-
-                                    DeliveryNotes = customer.Key.DeliveryNotes,
-
-                                    // ====================
-                                    // ADDRESS
-                                    // ====================
-
-                                    Address =
-                                        customer.Key.DoorNoAtEnd
+                                Address =
+                                    customer.Key.DoorNoAtEnd
 
                                         ? string.Join(
                                             ", ",
                                             new[]
                                             {
-                                            $"{customer.Key.DeliveryLocation} - {customer.Key.HouseDoorNo}",
+                                                $"{customer.Key.DeliveryLocation} - {customer.Key.HouseDoorNo}",
 
-                                            customer.Key
-                                                .DeliveryLocationAddress
+                                                customer.Key
+                                                    .DeliveryLocationAddress
                                             }
                                             .Where(x =>
                                                 !string.IsNullOrWhiteSpace(x)))
@@ -787,129 +815,226 @@ public class DeliveryPlanningService : IDeliveryPlanningService
                                             ", ",
                                             new[]
                                             {
-                                            customer.Key.HouseDoorNo,
+                                                customer.Key.HouseDoorNo,
 
-                                            customer.Key
-                                                .DeliveryLocation,
+                                                customer.Key
+                                                    .DeliveryLocation,
 
-                                            customer.Key
-                                                .DeliveryLocationAddress
+                                                customer.Key
+                                                    .DeliveryLocationAddress
                                             }
                                             .Where(x =>
                                                 !string.IsNullOrWhiteSpace(x))),
 
 
-                                    // ====================
-                                    // MILK PRODUCTS
-                                    // ====================
+                                // ====================
+                                // MILK PRODUCTS
+                                // ====================
 
-                                    MilkProducts = customer
+                                MilkProducts = customer
 
-                                        .Where(x =>
-                                            x.CategoryId ==
-                                            Constant
-                                                .ProductCategory
-                                                .Milk)
+                                    .Where(x =>
+                                        x.CategoryId ==
+                                        Constant
+                                            .ProductCategory
+                                            .Milk)
 
-                                        .GroupBy(x => new
+                                    .GroupBy(x => new
+                                    {
+                                        x.ProductId,
+
+                                        x.ProductCode,
+
+                                        x.ProductDisplayOrder
+                                    })
+
+                                    .OrderBy(x =>
+                                        x.Key.ProductDisplayOrder
+                                        ?? int.MaxValue)                                   
+
+                                    .Select(product =>
+                                        new DeliveryBoyProductDto
                                         {
-                                            x.ProductId,
+                                            ProductId =
+                                                product.Key.ProductId,
 
-                                            x.ProductCode,
+                                            ProductCode =
+                                                product.Key.ProductCode,
 
-                                            x.ProductDisplayOrder
+                                            Quantity =
+                                                product.Sum(
+                                                    x => x.Quantity),
+
+                                            DisplayOrder =
+                                                product.Key
+                                                    .ProductDisplayOrder
                                         })
 
-                                        .OrderBy(x =>
-                                            x.Key.ProductDisplayOrder
-                                            ?? int.MaxValue)
-
-                                        .ThenBy(x =>
-                                            x.Key.ProductCode)
-
-                                        .Select(product =>
-                                            new DeliveryBoyProductDto
-                                            {
-                                                ProductId =
-                                                    product.Key.ProductId,
-
-                                                ProductCode =
-                                                    product.Key.ProductCode,
-
-                                                Quantity =
-                                                    product.Sum(
-                                                        x => x.Quantity),
-
-                                                DisplayOrder =
-                                                    product.Key
-                                                        .ProductDisplayOrder
-                                            })
-
-                                        .ToList(),
+                                    .ToList(),
 
 
-                                    // ====================
-                                    // OTHER PRODUCTS
-                                    // ====================
+                                // ====================
+                                // OTHER PRODUCTS
+                                // ====================
 
-                                    OtherProducts = customer
+                                OtherProducts = customer
 
-                                        .Where(x =>
-                                            x.CategoryId !=
-                                            Constant
-                                                .ProductCategory
-                                                .Milk)
+                                    .Where(x =>
+                                        x.CategoryId !=
+                                        Constant
+                                            .ProductCategory
+                                            .Milk)
 
-                                        .GroupBy(x => new
+                                    .GroupBy(x => new
+                                    {
+                                        x.ProductId,
+
+                                        x.ProductCode,
+
+                                        x.ProductDisplayOrder
+                                    })
+
+                                    .OrderBy(x =>
+                                        x.Key.ProductDisplayOrder
+                                        ?? int.MaxValue)
+                                   
+
+                                    .Select(product =>
+                                        new DeliveryBoyProductDto
                                         {
-                                            x.ProductId,
+                                            ProductId =
+                                                product.Key.ProductId,
 
-                                            x.ProductCode,
+                                            ProductCode =
+                                                product.Key.ProductCode,
 
-                                            x.ProductDisplayOrder
+                                            Quantity =
+                                                product.Sum(
+                                                    x => x.Quantity),
+
+                                            DisplayOrder =
+                                                product.Key
+                                                    .ProductDisplayOrder
                                         })
 
-                                        .OrderBy(x =>
-                                            x.Key.ProductDisplayOrder
-                                            ?? int.MaxValue)
+                                    .ToList()
+                            })
 
-                                        .ThenBy(x =>
-                                            x.Key.ProductCode)
+                        .ToList()
+                })
 
-                                        .Select(product =>
-                                            new DeliveryBoyProductDto
-                                            {
-                                                ProductId =
-                                                    product.Key.ProductId,
+                .ToList()
+        })
 
-                                                ProductCode =
-                                                    product.Key.ProductCode,
-
-                                                Quantity =
-                                                    product.Sum(
-                                                        x => x.Quantity),
-
-                                                DisplayOrder =
-                                                    product.Key
-                                                        .ProductDisplayOrder
-                                            })
-
-                                        .ToList()
-                                })
-
-                            .ToList()
-                    })
-
-                    .ToList()
-            })
-
-            .ToList();
+        .ToList();
 
 
-        return result;
+    return result;
+}
+
+
+// ==================================================
+// NATURAL HOUSE / DOOR NUMBER SORT
+// ==================================================
+//
+// This handles values like:
+//
+// A1
+// A2
+// A10
+//
+// S1
+// S2
+// S10
+//
+// A1 25
+// A1 101
+// A1 205
+// A1 1502
+//
+// 12
+// 12A
+// 12B
+//
+// Vasanth Nivas
+//
+// Numeric portions are compared as numbers rather
+// than as strings.
+// ==================================================
+
+private static string GetHouseSortKey(string? houseDoorNo)
+{
+    if (string.IsNullOrWhiteSpace(houseDoorNo))
+        return "";
+
+    var value = houseDoorNo.Trim().ToUpperInvariant();
+
+    var matches = Regex.Matches(value, @"\d+");
+
+    if (matches.Count == 0)
+    {
+        // Text-only values
+        //
+        // Example:
+        // Vasanth Nivas
+        //
+        // These will be sorted alphabetically.
+        return value;
     }
 
-    public async Task<byte[]> ExportDeliveryBoySheetAsync(
+    var parts = new List<string>();
+
+    int lastIndex = 0;
+
+    foreach (Match match in matches)
+    {
+        // Text before number
+        var textPart =
+            value.Substring(
+                lastIndex,
+                match.Index - lastIndex);
+
+        if (!string.IsNullOrWhiteSpace(textPart))
+        {
+            parts.Add(
+                textPart.Trim());
+        }
+
+        // Numeric part
+        if (long.TryParse(
+            match.Value,
+            out var number))
+        {
+            // Fixed-width numeric value so that
+            // lexical comparison behaves naturally.
+            parts.Add(
+                number.ToString("D20"));
+        }
+
+        lastIndex =
+            match.Index + match.Length;
+    }
+
+    // Remaining text after the last number
+    if (lastIndex < value.Length)
+    {
+        var remaining =
+            value.Substring(lastIndex).Trim();
+
+        if (!string.IsNullOrWhiteSpace(remaining))
+        {
+            parts.Add(remaining);
+        }
+    }
+
+    return string.Join("|", parts);
+}
+
+
+
+
+
+public async Task<byte[]> ExportDeliveryBoySheetAsync(
      DateOnly deliveryDate,
      long? areaId)
     {
@@ -1385,6 +1510,249 @@ public class DeliveryPlanningService : IDeliveryPlanningService
 
         worksheet.Style.Font.FontSize =
             12;
+    }
+
+    public async Task<DeliveryBoySheetPreviewDto>    
+    GetDeliveryBoySheetPreviewAsync(
+        DateOnly deliveryDate,
+        long? areaId)
+    {
+        var deliveryOrders =
+            await GetDeliveryBoySheetAsync(
+                deliveryDate,
+                areaId);
+
+        var result = new DeliveryBoySheetPreviewDto
+        {
+            DeliveryDate = deliveryDate.ToString("dd-MM-yyyy")
+        };
+
+        if (deliveryOrders == null ||
+            !deliveryOrders.Any())
+        {
+            return result;
+        }
+
+        // ============================================
+        // Group Delivery Orders by Area
+        // ============================================
+
+        var areas =
+            deliveryOrders
+                .GroupBy(x => x.AreaCode)
+                .OrderBy(x => x.Key);
+
+        foreach (var areaGroup in areas)
+        {
+            var area = new DeliveryAreaPreviewDto
+            {
+                AreaCode = areaGroup.Key
+            };
+
+            var areaDeliveryOrders =
+                areaGroup.ToList();
+
+            // ============================================
+            // Each Delivery Order = One Preview Group
+            // ============================================
+
+            foreach (var deliveryOrder in areaDeliveryOrders)
+            {
+                var group = new DeliveryGroupPreviewDto
+                {
+                    ShowDeliveryTotal =
+                        deliveryOrder.GroupDeliverySheetByLocation
+                };
+
+                // ========================================
+                // Houses
+                // ========================================
+
+                foreach (var house in deliveryOrder.Houses)
+                {
+                    // ====================================
+                    // Customers
+                    // ====================================
+
+                    foreach (var customer in house.Customers)
+                    {
+                        // --------------------------------
+                        // Milk
+                        // --------------------------------
+
+                        var milkLines =
+                            customer.MilkProducts
+                                .Select(x =>
+                                    $"{FormatQuantity(x.Quantity)} {x.ProductCode}")
+                                .ToList();
+
+                        // --------------------------------
+                        // Other Products
+                        // --------------------------------
+
+                        var otherProductLines =
+                            customer.OtherProducts
+                                .Select(x =>
+                                    $"{FormatQuantity(x.Quantity)} {x.ProductCode}")
+                                .ToList();
+
+                        // Keep DeliveryNotes in Other Products
+                        // because that is what Excel currently does.
+                        if (!string.IsNullOrWhiteSpace(
+                                customer.DeliveryNotes))
+                        {
+                            otherProductLines.Add(
+                                customer.DeliveryNotes);
+                        }
+
+                        group.Rows.Add(
+                            new DeliveryPreviewRowDto
+                            {
+                                CustomerId = customer.CustomerId,
+
+                                AreaCode =
+                                    customer.AreaCode,
+
+                                CustomerName =
+                                    customer.CustomerName,
+
+                                Address =
+                                    customer.Address ?? string.Empty,
+
+                                Milk =
+                                    string.Join(
+                                        Environment.NewLine,
+                                        milkLines),
+
+                                OtherProducts =
+                                    string.Join(
+                                        Environment.NewLine,
+                                        otherProductLines),
+
+                                Remarks = string.Empty,
+
+                                IsManual = false,
+
+                                // IMPORTANT:
+                                // Excel checks the actual OtherProducts collection,
+                                // not DeliveryNotes.
+                                HasOtherProducts =
+                                    customer.OtherProducts.Any()
+                            });
+                    }
+                }
+
+                // ============================================
+                // Delivery Total
+                // ============================================
+                //
+                // This is intentionally inside the
+                // deliveryOrder loop.
+                //
+                // Therefore the total appears immediately
+                // after THIS group's customers.
+                // ============================================
+
+                if (deliveryOrder.GroupDeliverySheetByLocation)
+                {
+                    var locationCustomers =
+                        deliveryOrder.Houses
+                            .SelectMany(x => x.Customers)
+                            .ToList();
+
+                    var locationSummary =
+                        locationCustomers
+                            .SelectMany(x =>
+                                x.MilkProducts
+                                    //.Concat(x.OtherProducts)
+                                    )
+                            .GroupBy(x => new
+                            {
+                                x.ProductCode,
+                                x.DisplayOrder
+                            })
+                            .OrderBy(x =>
+                                x.Key.DisplayOrder ?? int.MaxValue)
+                            .ThenBy(x =>
+                                x.Key.ProductCode)
+                            .Select(x =>
+                                $"{FormatQuantity(
+                                    x.Sum(p => p.Quantity)
+                                )} {x.Key.ProductCode}")
+                            .ToList();
+
+                    group.DeliveryTotal =
+                        new DeliveryTotalPreviewDto
+                        {
+                            Label = "Delivery Total",
+
+                            Value =
+                                string.Join(
+                                    ", ",
+                                    locationSummary)
+                        };
+                }
+
+                // ============================================
+                // Add the completed group to the area
+                // ============================================
+
+                area.Groups.Add(group);
+            }
+
+            // ============================================
+            // Loading Summary
+            // ============================================
+            //
+            // This is independent of
+            // GroupDeliverySheetByLocation.
+            //
+            // It includes ALL customers in this area.
+            // ============================================
+
+            var allCustomers =
+                areaDeliveryOrders
+                    .SelectMany(x => x.Houses)
+                    .SelectMany(x => x.Customers)
+                    .ToList();
+
+            var loadingSummary =
+                allCustomers
+                    .SelectMany(x =>
+                        x.MilkProducts
+                            .Concat(x.OtherProducts))
+                    .GroupBy(x => new
+                    {
+                        x.ProductCode,
+                        x.DisplayOrder
+                    })
+                    .OrderBy(x =>
+                        x.Key.DisplayOrder ?? int.MaxValue)
+                    .ThenBy(x =>
+                        x.Key.ProductCode);
+
+            foreach (var product in loadingSummary)
+            {
+                area.LoadingSummary.Add(
+                    new LoadingSummaryPreviewDto
+                    {
+                        Product =
+                            product.Key.ProductCode,
+
+                        Quantity =
+                            FormatQuantity(
+                                product.Sum(x => x.Quantity))
+                    });
+            }
+
+            // ============================================
+            // Add Area
+            // ============================================
+
+            result.Areas.Add(area);
+        }
+
+        return result;
     }
 
     private static string FormatQuantity(decimal quantity)

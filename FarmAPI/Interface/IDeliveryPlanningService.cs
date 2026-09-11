@@ -24,6 +24,9 @@ public interface IDeliveryPlanningService
     DateOnly deliveryDate,
     long? areaId);
 
+    Task<DeliveryBoySheetPreviewDto> GetDeliveryBoySheetPreviewAsync(
+    DateOnly deliveryDate,
+    long? areaId);
     Task<List<ExpectedDeliveryDto>> GetExpectedDeliveriesAsync(
                DateOnly deliveryDate,
                string source,

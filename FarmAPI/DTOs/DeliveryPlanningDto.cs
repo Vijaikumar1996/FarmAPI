@@ -53,10 +53,10 @@
         public class DriverLoadingDto
         {
             public long AreaId { get; set; }
-
             public string AreaCode { get; set; } = string.Empty;
-
             public string AreaName { get; set; } = string.Empty;
+
+            public decimal TotalLitres { get; set; }
 
             public List<DriverLoadingItemDto> Products { get; set; } = new();
         }
@@ -68,6 +68,10 @@
             public string ProductCode { get; set; } = string.Empty;
 
             public string ProductName { get; set; } = string.Empty;
+
+            public short CategoryId { get; set; }
+
+            public string CategoryName { get; set; } = string.Empty;
 
             public decimal Quantity { get; set; }
         }
@@ -144,6 +148,68 @@
             public string Source { get; set; } = string.Empty;
 
             public long? RequestId { get; set; }
+        }
+
+        public class DeliveryBoySheetPreviewDto
+        {
+            public string DeliveryDate { get; set; } = string.Empty;
+
+            public List<DeliveryAreaPreviewDto> Areas { get; set; } = [];
+        }
+
+        public class DeliveryAreaPreviewDto
+        {
+            public string AreaCode { get; set; } = string.Empty;
+
+            public List<DeliveryGroupPreviewDto> Groups { get; set; } = [];
+
+            public List<LoadingSummaryPreviewDto> LoadingSummary { get; set; } = [];
+        }
+
+        public class DeliveryGroupPreviewDto
+        {
+            public List<DeliveryPreviewRowDto> Rows { get; set; } = [];
+
+            public bool ShowDeliveryTotal { get; set; }
+
+            public DeliveryTotalPreviewDto? DeliveryTotal { get; set; }
+        }
+
+        public class DeliveryPreviewRowDto
+        {
+            public long? CustomerId { get; set; }
+
+            public string AreaCode { get; set; } = string.Empty;
+
+            public string CustomerName { get; set; } = string.Empty;
+
+            public string Address { get; set; } = string.Empty;
+
+            public string Milk { get; set; } = string.Empty;
+
+            public string OtherProducts { get; set; } = string.Empty;
+
+            public string Remarks { get; set; } = string.Empty;
+
+            public bool IsManual { get; set; }
+
+            // Used only for UI highlighting.
+            // This keeps Preview behavior closer to Excel.
+            public bool HasOtherProducts { get; set; }
+        }
+
+        public class DeliveryTotalPreviewDto
+        {
+            public string Label { get; set; } = string.Empty;
+
+            public string Value { get; set; } = string.Empty;
+        }
+
+        public class LoadingSummaryPreviewDto
+        {
+            public string Product { get; set; } = string.Empty;
+
+            public string Quantity { get; set; } = string.Empty;
         }
     }
 }

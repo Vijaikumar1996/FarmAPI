@@ -16,6 +16,9 @@ namespace FarmAPI.Entities
         [Column("area_name")]
         public string AreaName { get; set; } = string.Empty;
 
+        [Column("display_order")]
+        public int DisplayOrder { get; set; }
+
         [Column("is_active")]
         public bool IsActive { get; set; }
 

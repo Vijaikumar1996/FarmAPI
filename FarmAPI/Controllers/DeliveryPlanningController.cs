@@ -105,4 +105,17 @@ public class DeliveryPlanningController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpGet("delivery-boy-sheet/preview")]
+    public async Task<IActionResult> PreviewDeliveryBoySheet(
+    [FromQuery] DateOnly deliveryDate,
+    [FromQuery] long? areaId)
+    {
+        var result =
+            await _service.GetDeliveryBoySheetPreviewAsync(
+                deliveryDate,
+                areaId);
+
+        return Ok(result);
+    }
 }
