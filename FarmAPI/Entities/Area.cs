@@ -25,6 +25,11 @@ namespace FarmAPI.Entities
         [Column("group_delivery_sheet_by_location")]
         public bool GroupDeliverySheetByLocation { get; set; }
 
+        // Controls whether a blank space is added
+        // after each delivery location for this area
+        [Column("show_space_after_delivery_location")]
+        public bool ShowSpaceAfterLocation { get; set; }
+
         [Column("created_at")]
         public DateTime CreatedAt { get; set; }
 

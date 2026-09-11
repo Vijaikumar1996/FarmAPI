@@ -88,6 +88,8 @@
 
             public bool GroupDeliverySheetByLocation { get; set; }
 
+            public bool ShowSpaceAfterLocation { get; set; }
+
             public List<DeliveryHouseDto> Houses { get; set; } = new();
         }
 
@@ -161,6 +163,7 @@
         {
             public string AreaCode { get; set; } = string.Empty;
 
+            public bool ShowSpaceAfterLocation { get; set; }
             public List<DeliveryGroupPreviewDto> Groups { get; set; } = [];
 
             public List<LoadingSummaryPreviewDto> LoadingSummary { get; set; } = [];
