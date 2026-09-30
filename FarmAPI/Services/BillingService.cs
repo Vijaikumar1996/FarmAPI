@@ -674,47 +674,48 @@ namespace FarmAPI.Services
 
             // Products
             var products = await _context.DeliveryDetails
-                .Where(x =>
-                    x.CustomerId == customerId &&
-                    x.BillingMonth == billingMonth &&
-                    x.DeliveredQty > 0)
-                .GroupBy(x => new
-                {
-                    x.ProductId,
-                    x.Product.ProductName,
-                    x.Product.LitresPerUnit,
-                    x.UnitPrice
-                })
-                .Select(x => new SummaryBillItemDto
-                {
-                    DisplayOrder = x.Key.ProductId,
+    .Where(x =>
+        x.CustomerId == customerId &&
+        x.BillingMonth == billingMonth &&
+        x.DeliveredQty > 0)
+    .GroupBy(x => new
+    {
+        ProductGroupId = (x.ProductId == 2 || x.ProductId == 3)
+            ? 2
+            : x.ProductId,
 
-                    ProductName = x.Key.ProductName,
+        ProductName = (x.ProductId == 2 || x.ProductId == 3)
+            ? "PURE RAW COW MILK"
+            : x.Product.ProductName,
 
-                    Quantity = x.Sum(y => y.DeliveredQty),
+        x.Product.LitresPerUnit,
+        x.UnitPrice
+    })
+    .Select(x => new SummaryBillItemDto
+    {
+        DisplayOrder = x.Key.ProductGroupId,
 
-                    // Convert unit price to price per litre
-                    //
-                    // 0.5 litre -> ₹30 / 0.5 = ₹60/L
-                    // 1 litre   -> ₹60 / 1   = ₹60/L
-                    UnitPrice =
-                        x.Key.LitresPerUnit.HasValue &&
-                        x.Key.LitresPerUnit.Value > 0
-                            ? x.Key.UnitPrice / x.Key.LitresPerUnit.Value
-                            : x.Key.UnitPrice,
+        ProductName = x.Key.ProductName,
 
-                    LitresPerUnit = x.Key.LitresPerUnit,
+        Quantity = x.Sum(y => y.DeliveredQty),
 
-                    // Keep actual billed amount based on original unit price
-                    Amount = x.Sum(y =>
-                        y.DeliveredQty * y.UnitPrice),
+        UnitPrice =
+            x.Key.LitresPerUnit.HasValue &&
+            x.Key.LitresPerUnit.Value > 0
+                ? x.Key.UnitPrice / x.Key.LitresPerUnit.Value
+                : x.Key.UnitPrice,
 
-                    TotalDays = x.Select(y => y.DeliveryDate)
-                        .Distinct()
-                        .Count()
-                })
-                .OrderBy(x => x.DisplayOrder)
-                .ToListAsync();
+        LitresPerUnit = x.Key.LitresPerUnit,
+
+        Amount = x.Sum(y =>
+            y.DeliveredQty * y.UnitPrice),
+
+        TotalDays = x.Select(y => y.DeliveryDate)
+            .Distinct()
+            .Count()
+    })
+    .OrderBy(x => x.DisplayOrder)
+    .ToListAsync();
 
             // Current charges
             //
