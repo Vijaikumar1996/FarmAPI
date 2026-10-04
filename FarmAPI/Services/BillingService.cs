@@ -25,50 +25,72 @@ namespace FarmAPI.Services
         }
 
         public async Task<BillingSearchResponse> GetMonthlyBillingAsync(
-      BillingFilterRequest request)
+          BillingFilterRequest request)
         {
             var billingMonth = new DateOnly(
                 request.BillingMonth.Year,
                 request.BillingMonth.Month,
                 1);
 
+            // ---------------------------------------------------------
+            // Subscription Customer IDs
+            // ---------------------------------------------------------
             var subscriptionCustomerIds =
                 await _customerHelper.GetSubscriptionCustomerIdsAsync();
 
+            // ---------------------------------------------------------
+            // Base Query
+            // ---------------------------------------------------------
             var query = _context.CustomerMonthlyLedgers
                 .Where(x => x.BillingMonth == billingMonth);
 
-            if (request.CustomerId.HasValue)
-            {
-                query = query.Where(x =>
-                    x.CustomerId == request.CustomerId.Value);
-            }
-
+            // ---------------------------------------------------------
             // Customer Type Filter
+            // NORMAL / LUXURY / DEALER
+            // ---------------------------------------------------------
             if (!string.IsNullOrWhiteSpace(request.CustomerType))
             {
-                switch (request.CustomerType.ToUpper())
+                var customerType = request.CustomerType
+                    .Trim()
+                    .ToUpper();
+
+                query = query.Where(x =>
+                    x.Customer.CustomerType.ToUpper() == customerType);
+            }
+
+            // ---------------------------------------------------------
+            // Payment Type Filter
+            // SUBSCRIPTION / NON_SUBSCRIPTION
+            // ---------------------------------------------------------
+            if (!string.IsNullOrWhiteSpace(request.PaymentType))
+            {
+                switch (request.PaymentType.Trim().ToUpper())
                 {
                     case "SUBSCRIPTION":
 
                         query = query.Where(x =>
-                            subscriptionCustomerIds.Contains(x.CustomerId));
+                            subscriptionCustomerIds.Contains(
+                                x.CustomerId));
 
                         break;
 
                     case "NON_SUBSCRIPTION":
 
                         query = query.Where(x =>
-                            !subscriptionCustomerIds.Contains(x.CustomerId));
+                            !subscriptionCustomerIds.Contains(
+                                x.CustomerId));
 
                         break;
                 }
             }
 
+            // ---------------------------------------------------------
             // Payment Status Filter
+            // PAID / PENDING
+            // ---------------------------------------------------------
             if (!string.IsNullOrWhiteSpace(request.PaymentStatus))
             {
-                switch (request.PaymentStatus.ToUpper())
+                switch (request.PaymentStatus.Trim().ToUpper())
                 {
                     case "PAID":
 
@@ -86,6 +108,9 @@ namespace FarmAPI.Services
                 }
             }
 
+            // ---------------------------------------------------------
+            // Get Billing List
+            // ---------------------------------------------------------
             var billingList = await query
                 .OrderBy(x => x.Customer.CustomerName)
                 .Select(x => new
@@ -94,16 +119,22 @@ namespace FarmAPI.Services
 
                     CustomerId = x.CustomerId,
 
-                    CustomerName = x.Customer.CustomerName,
+                    CustomerName =
+                        x.Customer.CustomerName,
 
-                    AreaCode = x.Customer.Area.AreaCode,
+                    CustomerType =
+                        x.Customer.CustomerType,
+
+                    AreaCode =
+                        x.Customer.Area.AreaCode,
 
                     DeliveryLocationName =
                         x.Customer.DeliveryLocation != null
                             ? x.Customer.DeliveryLocation.LocationName
                             : null,
 
-                    HouseDoorNo = x.Customer.HouseDoorNo,
+                    HouseDoorNo =
+                        x.Customer.HouseDoorNo,
 
                     LocationAddress =
                         x.Customer.DeliveryLocation != null
@@ -114,21 +145,29 @@ namespace FarmAPI.Services
                         x.Customer.DeliveryLocation != null
                             && x.Customer.DeliveryLocation.DoorNoAtEnd,
 
-                    BillingMonth = x.BillingMonth,
+                    BillingMonth =
+                        x.BillingMonth,
 
-                    ProductAmount = x.ProductAmount,
+                    ProductAmount =
+                        x.ProductAmount,
 
-                    DeliveryCharge = x.DeliveryCharge,
+                    DeliveryCharge =
+                        x.DeliveryCharge,
 
-                    AdjustmentAmount = x.AdjustmentAmount,
+                    AdjustmentAmount =
+                        x.AdjustmentAmount,
 
-                    PaidAmount = x.PaidAmount,
+                    PaidAmount =
+                        x.PaidAmount,
 
-                    CurrentMonthBalance = x.BalanceAmount
+                    CurrentMonthBalance =
+                        x.BalanceAmount
                 })
                 .ToListAsync();
 
-            // Build the final response after EF has finished executing
+            // ---------------------------------------------------------
+            // Build Response
+            // ---------------------------------------------------------
             var billingItems = billingList
                 .Select(x =>
                 {
@@ -152,47 +191,68 @@ namespace FarmAPI.Services
 
                     return new BillingListResponse
                     {
-                        BillingId = x.BillingId,
+                        BillingId =
+                            x.BillingId,
 
-                        CustomerId = x.CustomerId,
+                        CustomerId =
+                            x.CustomerId,
 
-                        CustomerName = x.CustomerName,
+                        CustomerName =
+                            x.CustomerName,
 
-                        Address = address,
+                        Address =
+                            address,
 
-                        DeliveryLocationName = x.DeliveryLocationName,
+                        DeliveryLocationName =
+                            x.DeliveryLocationName,
 
-                        BillingMonth = x.BillingMonth,
+                        BillingMonth =
+                            x.BillingMonth,
 
-                        ProductAmount = x.ProductAmount,
+                        ProductAmount =
+                            x.ProductAmount,
 
-                        DeliveryCharge = x.DeliveryCharge,
+                        DeliveryCharge =
+                            x.DeliveryCharge,
 
-                        AdjustmentAmount = x.AdjustmentAmount,
+                        AdjustmentAmount =
+                            x.AdjustmentAmount,
 
-                        PaidAmount = x.PaidAmount,
+                        PaidAmount =
+                            x.PaidAmount,
 
-                        CurrentMonthBalance = x.CurrentMonthBalance
+                        CurrentMonthBalance =
+                            x.CurrentMonthBalance
                     };
                 })
                 .ToList();
 
+            // ---------------------------------------------------------
+            // Summary
+            // ---------------------------------------------------------
             var summary = new BillingSummaryResponse
             {
-                CustomerCount = billingItems.Count,
+                CustomerCount =
+                    billingItems.Count,
 
-                TotalBill = billingItems.Sum(x =>
-    x.ProductAmount +
-    x.DeliveryCharge -
-    x.AdjustmentAmount),
+                TotalBill =
+                    billingItems.Sum(x =>
+                        x.ProductAmount +
+                        x.DeliveryCharge +
+                        x.AdjustmentAmount),
 
-                TotalCollected = billingItems.Sum(x =>
-                    x.PaidAmount),
+                TotalCollected =
+                    billingItems.Sum(x =>
+                        x.PaidAmount),
 
-                TotalOutstanding = billingItems.Sum(x =>
-                    x.CurrentMonthBalance)
+                TotalOutstanding =
+                    billingItems.Sum(x =>
+                        x.CurrentMonthBalance)
             };
 
+            // ---------------------------------------------------------
+            // Final Response
+            // ---------------------------------------------------------
             return new BillingSearchResponse
             {
                 Summary = summary,
@@ -200,7 +260,6 @@ namespace FarmAPI.Services
                 Items = billingItems
             };
         }
-
 
         public async Task ReceivePaymentAsync(
     ReceivePaymentRequest request)

@@ -8,12 +8,13 @@ namespace FarmAPI.DTOs
         {
             public DateOnly BillingMonth { get; set; }
 
-            public long? CustomerId { get; set; }
-
             public string? CustomerType { get; set; }
+
+            public string? PaymentType { get; set; }
 
             public string? PaymentStatus { get; set; }
         }
+
 
         public class BillingSearchResponse
         {
