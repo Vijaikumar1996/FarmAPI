@@ -17,6 +17,9 @@ namespace FarmAPI.Entities
         [Column("customer_name")]
         public string CustomerName { get; set; } = string.Empty;
 
+        [Column("customer_type")]
+        public string CustomerType { get; set; } = string.Empty;
+
         [Column("mobile_no")]
         public string MobileNo { get; set; } = string.Empty;
 

@@ -185,7 +185,7 @@ namespace FarmAPI.DTOs
         public class FarmInfoDto
         {
             public string FarmName { get; set; } = string.Empty;
-
+            public string CustomerType { get; set; } = string.Empty;
             public string FarmQuote { get; set; } = string.Empty;
             public string MobileNo { get; set; } = string.Empty;
 
@@ -206,6 +206,7 @@ namespace FarmAPI.DTOs
         {
             public string CustomerName { get; set; } = string.Empty;
 
+           
             public string MobileNo { get; set; } = string.Empty;
 
             public string AreaName { get; set; } = string.Empty;
