@@ -20,11 +20,13 @@ namespace FarmAPI.Controllers
 
         [HttpGet("monthly")]
         public async Task<IActionResult> GetMonthlyBilling(
-            [FromQuery] BillingFilterRequest request)
+     [FromQuery] BillingFilterRequest request)
         {
-            return Ok(await _billingService
-                .GetMonthlyBillingAsync(request));
+            return Ok(
+                await _billingService.GetMonthlyBillingAsync(request)
+            );
         }
+
 
         //[HttpGet("summary")]
         //public async Task<IActionResult> GetSummary(
