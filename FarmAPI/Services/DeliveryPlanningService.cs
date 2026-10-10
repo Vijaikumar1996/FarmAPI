@@ -1772,9 +1772,9 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
     }
 
     public async Task<List<ExpectedDeliveryDto>> GetExpectedDeliveriesAsync(
-     DateOnly deliveryDate,
-     string source,
-     long productId)
+      DateOnly deliveryDate,
+      string source,
+      long productId)
     {
         // ============================================================
         // Load active subscriptions
@@ -1785,6 +1785,8 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
             .Include(x => x.Product)
             .Include(x => x.Customer)
                 .ThenInclude(c => c.Area)
+            .Include(x => x.Customer)
+                .ThenInclude(c => c.DeliveryLocation)
             .Where(x =>
                 x.IsActive &&
                 x.Product.IsActive &&
@@ -1803,6 +1805,8 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
             .Include(x => x.Product)
             .Include(x => x.Customer)
                 .ThenInclude(c => c.Area)
+            .Include(x => x.Customer)
+                .ThenInclude(c => c.DeliveryLocation)
             .AsNoTracking()
             .Where(x =>
                 x.Status != CustomerRequestStatus.Cancelled &&
@@ -1823,11 +1827,11 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
         // ============================================================
 
         if (source.Equals(
-     "subscription",
-     StringComparison.OrdinalIgnoreCase) ||
-     source.Equals(
-         "all",
-         StringComparison.OrdinalIgnoreCase))
+                "subscription",
+                StringComparison.OrdinalIgnoreCase) ||
+            source.Equals(
+                "all",
+                StringComparison.OrdinalIgnoreCase))
         {
             foreach (var subscription in subscriptions)
             {
@@ -1861,9 +1865,6 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
 
                 // ----------------------------------------------------
                 // Find Replace request
-                //
-                // Replace is your override.
-                // If Replace exists, it becomes the final delivery.
                 // ----------------------------------------------------
 
                 var replaceRequest = customerRequests.FirstOrDefault(x =>
@@ -1877,7 +1878,6 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
 
                 if (replaceRequest != null)
                 {
-                    // Make sure replacement product exists
                     if (!replaceRequest.ProductId.HasValue)
                         continue;
 
@@ -1888,24 +1888,13 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
                         continue;
 
 
-                    // ------------------------------------------------
                     // Product filter
-                    //
-                    // User selected a product in the UI.
-                    // Only show replacement if it matches.
-                    // ------------------------------------------------
 
                     if (replaceRequest.ProductId.Value != productId)
                         continue;
 
 
-                    // ------------------------------------------------
                     // Quantity
-                    //
-                    // Replace quantity is the final quantity.
-                    // If quantity is null, fallback to subscription
-                    // quantity.
-                    // ------------------------------------------------
 
                     decimal subscriptionQuantity = GetQuantity(
                         subscription,
@@ -1916,13 +1905,7 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
                         subscriptionQuantity;
 
 
-                    // ------------------------------------------------
-                    // Add ONLY replacement
-                    //
-                    // IMPORTANT:
-                    // We use continue so the normal subscription
-                    // record is NOT added.
-                    // ------------------------------------------------
+                    // Add replacement delivery
 
                     result.Add(new ExpectedDeliveryDto
                     {
@@ -1931,6 +1914,20 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
 
                         CustomerName =
                             subscription.Customer.CustomerName,
+
+                        Address =
+                            subscription.Customer.DeliveryLocation?.DoorNoAtEnd == true
+                                ? string.Join(", ", new[]
+                                {
+                                $"{subscription.Customer.DeliveryLocation.LocationName} {subscription.Customer.HouseDoorNo}",
+                                subscription.Customer.DeliveryLocation.Address
+                                }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                                : string.Join(", ", new[]
+                                {
+                                subscription.Customer.HouseDoorNo,
+                                subscription.Customer.DeliveryLocation?.LocationName,
+                                subscription.Customer.DeliveryLocation?.Address
+                                }.Where(x => !string.IsNullOrWhiteSpace(x))),
 
                         SubscriptionId =
                             subscription.Id,
@@ -1953,18 +1950,14 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
                             replaceRequest.Id
                     });
 
+                    // Do not add the normal subscription delivery
                     continue;
                 }
 
 
                 // ----------------------------------------------------
-                // No Replace request
-                //
-                // Therefore normal subscription delivery applies.
+                // No Replace request: normal subscription delivery
                 // ----------------------------------------------------
-
-                // Check whether selected product matches
-                // subscription product.
 
                 if (subscription.ProductId != productId)
                     continue;
@@ -1975,8 +1968,8 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
                 // ----------------------------------------------------
 
                 if (!IsDeliveryApplicable(
-                    subscription,
-                    deliveryDate))
+                        subscription,
+                        deliveryDate))
                 {
                     continue;
                 }
@@ -2002,6 +1995,20 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
 
                     CustomerName =
                         subscription.Customer.CustomerName,
+
+                    Address =
+                        subscription.Customer.DeliveryLocation?.DoorNoAtEnd == true
+                            ? string.Join(", ", new[]
+                            {
+                            $"{subscription.Customer.DeliveryLocation.LocationName} {subscription.Customer.HouseDoorNo}",
+                            subscription.Customer.DeliveryLocation.Address
+                            }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                            : string.Join(", ", new[]
+                            {
+                            subscription.Customer.HouseDoorNo,
+                            subscription.Customer.DeliveryLocation?.LocationName,
+                            subscription.Customer.DeliveryLocation?.Address
+                            }.Where(x => !string.IsNullOrWhiteSpace(x))),
 
                     SubscriptionId =
                         subscription.Id,
@@ -2031,16 +2038,15 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
         // ============================================================
 
         if (source.Equals(
-     "request",
-     StringComparison.OrdinalIgnoreCase) ||
-     source.Equals(
-         "all",
-         StringComparison.OrdinalIgnoreCase))
+                "request",
+                StringComparison.OrdinalIgnoreCase) ||
+            source.Equals(
+                "all",
+                StringComparison.OrdinalIgnoreCase))
         {
             var addRequests = customerRequests
                 .Where(x =>
-                    x.RequestAction ==
-                        CustomerRequestAction.Add &&
+                    x.RequestAction == CustomerRequestAction.Add &&
                     x.SubscriptionId == null &&
                     x.ProductId.HasValue &&
                     x.ProductId.Value == productId)
@@ -2064,7 +2070,7 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
 
 
                 // ----------------------------------------------------
-                // Add request
+                // Add request delivery
                 // ----------------------------------------------------
 
                 result.Add(new ExpectedDeliveryDto
@@ -2074,6 +2080,20 @@ public async Task<byte[]> ExportDeliveryBoySheetAsync(
 
                     CustomerName =
                         addRequest.Customer.CustomerName,
+
+                    Address =
+                        addRequest.Customer.DeliveryLocation?.DoorNoAtEnd == true
+                            ? string.Join(", ", new[]
+                            {
+                            $"{addRequest.Customer.DeliveryLocation.LocationName} {addRequest.Customer.HouseDoorNo}",
+                            addRequest.Customer.DeliveryLocation.Address
+                            }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                            : string.Join(", ", new[]
+                            {
+                            addRequest.Customer.HouseDoorNo,
+                            addRequest.Customer.DeliveryLocation?.LocationName,
+                            addRequest.Customer.DeliveryLocation?.Address
+                            }.Where(x => !string.IsNullOrWhiteSpace(x))),
 
                     SubscriptionId = null,
 

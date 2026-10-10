@@ -141,6 +141,8 @@
 
             public long ProductId { get; set; }
 
+            public string Address { get; set; }
+
             public string ProductCode { get; set; } = string.Empty;
 
             public string ProductName { get; set; } = string.Empty;
