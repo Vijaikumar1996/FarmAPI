@@ -42,6 +42,7 @@ builder.Services.AddScoped<IDeliveryVerificationService, DeliveryVerificationSer
 builder.Services.AddScoped<IBillingService, BillingService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<ICustomerHelperService, CustomerHelperService>();
+builder.Services.AddScoped<IReportsService, ReportsService>();
 
 // --------------------
 // CORS
