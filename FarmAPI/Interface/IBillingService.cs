@@ -23,5 +23,7 @@ namespace FarmAPI.Interface
         Task<SummaryBillResponse> GetSummaryBillAsync(
     long customerId,
     DateOnly billingMonth);
+
+        Task MarkBillSentAsync(MarkBillSentRequest request);
     }
 }

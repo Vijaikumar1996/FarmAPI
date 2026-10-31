@@ -75,5 +75,17 @@ namespace FarmAPI.Controllers
                 customerId,
                 billingMonth));
         }
+
+        [HttpPost("bill-sent")]
+        public async Task<IActionResult> MarkBillSent(
+    MarkBillSentRequest request)
+        {
+            await _billingService.MarkBillSentAsync(request);
+
+            return Ok(new
+            {
+                Message = "Bill marked as sent successfully."
+            });
+        }
     }
 }

@@ -109,6 +109,36 @@ namespace FarmAPI.Services
             }
 
             // ---------------------------------------------------------
+            // Bill Sent Status Filter
+            // SENT / PENDING
+            // ---------------------------------------------------------
+            if (!string.IsNullOrWhiteSpace(request.BillSentStatus))
+            {
+                switch (request.BillSentStatus.Trim().ToUpper())
+                {
+                    case "SENT":
+
+                        query = query.Where(x =>
+                            _context.BillDispatches.Any(b =>
+                                b.CustomerId == x.CustomerId &&
+                                b.BillingMonth == billingMonth &&
+                                b.BillStatus == "Sent"));
+
+                        break;
+
+                    case "PENDING":
+
+                        query = query.Where(x =>
+                            !_context.BillDispatches.Any(b =>
+                                b.CustomerId == x.CustomerId &&
+                                b.BillingMonth == billingMonth &&
+                                b.BillStatus == "Sent"));
+
+                        break;
+                }
+            }
+
+            // ---------------------------------------------------------
             // Get Billing List
             // ---------------------------------------------------------
             var billingList = await query
@@ -1159,6 +1189,63 @@ namespace FarmAPI.Services
 
                 Products = products
             };
+        }
+
+
+        public async Task MarkBillSentAsync(
+     MarkBillSentRequest request)
+        {
+            var billingMonth = new DateOnly(
+                request.BillingMonth.Year,
+                request.BillingMonth.Month,
+                1);
+
+            // Get monthly ledger
+            var ledger = await _context.CustomerMonthlyLedgers
+                .FirstOrDefaultAsync(x =>
+                    x.CustomerId == request.CustomerId &&
+                    x.BillingMonth == billingMonth);
+
+            if (ledger == null)
+                throw new Exception("Monthly bill not found.");
+
+            // Pending amount
+            var pendingAmount = ledger.BalanceAmount;
+
+            // Check existing dispatch record
+            var dispatch = await _context.BillDispatches
+                .FirstOrDefaultAsync(x =>
+                    x.CustomerId == request.CustomerId &&
+                    x.BillingMonth == billingMonth);
+
+            var now = DateTime.UtcNow;
+
+            if (dispatch == null)
+            {
+                dispatch = new BillDispatch
+                {
+                    CustomerId = request.CustomerId,
+                    BillingMonth = billingMonth,
+                    TotalAmount = pendingAmount,
+                    BillStatus = "Sent",
+                    SentAt = now,
+                    SentBy = _currentUser.UserId,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                _context.BillDispatches.Add(dispatch);
+            }
+            //else
+            //{
+            //    dispatch.TotalAmount = pendingAmount;
+            //    dispatch.BillStatus = "Sent";
+            //    dispatch.SentAt = now;
+            //    dispatch.SentBy = _currentUser.UserId;
+            //    dispatch.UpdatedAt = now;
+            //}
+
+            await _context.SaveChangesAsync();
         }
     }
 }

@@ -49,6 +49,8 @@ namespace FarmAPI.Data
 
         public DbSet<CustomerOutstanding> CustomerOutstanding { get; set; }
 
+        public DbSet<BillDispatch> BillDispatches { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

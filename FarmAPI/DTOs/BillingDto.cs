@@ -13,6 +13,7 @@ namespace FarmAPI.DTOs
             public string? PaymentType { get; set; }
 
             public string? PaymentStatus { get; set; }
+            public string? BillSentStatus { get; set; }
         }
 
 
@@ -249,6 +250,12 @@ namespace FarmAPI.DTOs
             public decimal Amount { get; set; }
 
             public int TotalDays { get; set; }
+        }
+
+        public class MarkBillSentRequest
+        {
+            public long CustomerId { get; set; }
+            public DateOnly BillingMonth { get; set; }
         }
     }
 }
