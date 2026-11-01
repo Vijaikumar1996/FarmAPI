@@ -268,7 +268,7 @@ namespace FarmAPI.Services
                 TotalBill =
                     billingItems.Sum(x =>
                         x.ProductAmount +
-                        x.DeliveryCharge +
+                        x.DeliveryCharge -
                         x.AdjustmentAmount),
 
                 TotalCollected =
